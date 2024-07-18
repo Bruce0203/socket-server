@@ -100,7 +100,7 @@ impl ServerSocketService for MockListener {
         _registry: &mut SocketEvents<Self>,
         packet: <Self::ConnectionState as ServerBoundPacketStream>::BoundPacket,
     ) -> Result<(), ()> {
-        let result = self.received_packets.push(packet);
+        let _result = self.received_packets.push(packet);
         Ok(())
     }
     fn accept(&mut self, _socket_id: &SocketId, _registry: &mut SocketEvents<Self>) {}

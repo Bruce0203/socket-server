@@ -8,20 +8,19 @@ use crate::{
     SocketId,
 };
 
-pub fn entry_point<T: ServerSocketService>(service: T) -> !
+pub fn entry_point<T: ServerSocketService>(service: T, port: u16, tick: Duration) -> !
 where
     [(); T::MAX_CONNECTIONS]:,
     [(); T::WRITE_BUFFER_LENGTH]:,
     [(); T::READ_BUFFER_LENGTH]:,
 {
     let socket_server = &mut ServerSocketChannel::<mio::net::TcpStream, T>::new(service);
-    let mut events = mio::Events::with_capacity(100);
+    let mut events = mio::Events::with_capacity(T::MAX_CONNECTIONS);
     const LISTENER_INDEX: usize = usize::MAX;
     let mut poll = mio::Poll::new().unwrap();
     let mut mio_registry = poll.registry().try_clone().unwrap();
     let listener = {
-        const PORT: u16 = 25525;
-        let addr = format!("[::]:{PORT}").parse().unwrap();
+        let addr = format!("[::]:{port}").parse().unwrap();
         let mut listener = mio::net::TcpListener::bind(addr).unwrap();
         let lisetner_token = mio::Token(LISTENER_INDEX);
         let interest = mio::Interest::READABLE;
@@ -29,8 +28,7 @@ where
             .unwrap();
         listener
     };
-    const TICK: Duration = Duration::from_millis(50);
-    let mut tick_machine = TickMachine::new(TICK);
+    let mut tick_machine = TickMachine::new(tick);
     loop {
         poll.poll(&mut events, Some(Duration::ZERO)).unwrap();
         tick_machine.tick(|| socket_server.on_tick());
