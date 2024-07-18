@@ -6,6 +6,10 @@ description = "single thread selector server socket"
 author = "Bruce0203 <brucefreedy@gmail.com>"
 repository = "https://github.com/Bruce0203/socket-server"
 license = "MIT"
+include = [
+    "**/*.rs",
+    "Cargo.toml",
+]
 
 [dependencies]
 derive_more = "0.99.18"
