@@ -1,6 +1,6 @@
 [package]
 name = "socket_server"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "single thread selector server socket"
 author = "Bruce0203 <brucefreedy@gmail.com>"
