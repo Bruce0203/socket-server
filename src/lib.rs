@@ -8,3 +8,6 @@ mod socket;
 pub mod tick_machine;
 
 pub use socket::*;
+
+#[cfg(feature = "websocket")]
+pub mod websocket;

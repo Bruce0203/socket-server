@@ -3,7 +3,7 @@ use packetize::{
     streaming_packets, Decode, Encode, ServerBoundPacketStream, SimplePacketStreamFormat,
 };
 
-use crate::{ServerSocketService, Socket, SocketEvents, SocketId};
+use crate::{Channel, ServerSocketService, Socket, SocketEvents, SocketId, SocketReadError};
 
 pub struct MockStream<T: ServerSocketService>
 where
@@ -106,5 +106,38 @@ impl ServerSocketService for MockListener {
     fn accept(&mut self, _socket_id: &SocketId, _registry: &mut SocketEvents<Self>) {}
     fn close(&mut self, _socket_id: &SocketId, _registry: &mut SocketEvents<Self>) {
         self.is_closed = true;
+    }
+
+    type Channel = MockChannel;
+}
+
+#[derive(Default)]
+pub struct MockChannel;
+
+impl Channel for MockChannel {
+    fn on_read<T: ServerSocketService>(
+        &mut self,
+        socket_id: &SocketId,
+        registry: &mut SocketEvents<T>,
+    ) -> Result<(), SocketReadError>
+    where
+        [(); T::MAX_CONNECTIONS]:,
+        [(); T::READ_BUFFER_LENGTH]:,
+        [(); T::WRITE_BUFFER_LENGTH]:,
+    {
+        Ok(())
+    }
+
+    fn on_write<T: ServerSocketService>(
+        &mut self,
+        socket_id: &SocketId,
+        registry: &mut SocketEvents<T>,
+    ) -> Result<(), ()>
+    where
+        [(); T::MAX_CONNECTIONS]:,
+        [(); T::READ_BUFFER_LENGTH]:,
+        [(); T::WRITE_BUFFER_LENGTH]:,
+    {
+        Ok(())
     }
 }

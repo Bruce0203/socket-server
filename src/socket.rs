@@ -22,14 +22,15 @@ impl Into<usize> for &SocketId {
         self.0.get()
     }
 }
-
 pub trait ServerSocketService: Sized {
     const MAX_CONNECTIONS: usize;
     const WRITE_BUFFER_LENGTH: usize;
     const READ_BUFFER_LENGTH: usize;
     type ConnectionState: ServerBoundPacketStream + ClientBoundPacketStream + Default;
+    type Channel: Channel;
 
     fn tick(&mut self);
+
     fn read(
         &mut self,
         socket_id: &SocketId,
@@ -54,6 +55,33 @@ pub trait ServerSocketService: Sized {
         [(); Self::READ_BUFFER_LENGTH]:;
 }
 
+pub enum SocketReadError {
+    NotFullRead,
+    SocketClosed,
+}
+
+pub trait Channel: Default {
+    fn on_read<T: ServerSocketService>(
+        &mut self,
+        socket_id: &SocketId,
+        registry: &mut SocketEvents<T>,
+    ) -> Result<(), SocketReadError>
+    where
+        [(); T::MAX_CONNECTIONS]:,
+        [(); T::READ_BUFFER_LENGTH]:,
+        [(); T::WRITE_BUFFER_LENGTH]:;
+
+    fn on_write<T: ServerSocketService>(
+        &mut self,
+        socket_id: &SocketId,
+        registry: &mut SocketEvents<T>,
+    ) -> Result<(), ()>
+    where
+        [(); T::MAX_CONNECTIONS]:,
+        [(); T::READ_BUFFER_LENGTH]:,
+        [(); T::WRITE_BUFFER_LENGTH]:;
+}
+
 pub struct ServerSocketChannel<Stream, T: ServerSocketService>
 where
     [(); T::MAX_CONNECTIONS]:,
@@ -61,7 +89,31 @@ where
     [(); T::WRITE_BUFFER_LENGTH]:,
 {
     service: T,
-    connections: Slab<SocketId, Stream, { T::MAX_CONNECTIONS }>,
+    connections: Slab<SocketId, Connection<Stream, T>, { T::MAX_CONNECTIONS }>,
+}
+
+pub struct Connection<Stream, T: ServerSocketService>
+where
+    [(); T::MAX_CONNECTIONS]:,
+    [(); T::READ_BUFFER_LENGTH]:,
+    [(); T::WRITE_BUFFER_LENGTH]:,
+{
+    stream: Stream,
+    channel: T::Channel,
+}
+
+impl<Stream, T: ServerSocketService> Connection<Stream, T>
+where
+    [(); T::MAX_CONNECTIONS]:,
+    [(); T::READ_BUFFER_LENGTH]:,
+    [(); T::WRITE_BUFFER_LENGTH]:,
+{
+    pub fn new(stream: Stream) -> Self {
+        Self {
+            stream,
+            channel: Default::default(),
+        }
+    }
 }
 
 impl<Stream, T: ServerSocketService> ServerSocketChannel<Stream, T>
@@ -120,7 +172,7 @@ where
     [(); T::READ_BUFFER_LENGTH]:,
 {
     pub(crate) write_or_close_events: Vec<SocketId, { T::MAX_CONNECTIONS }>,
-    connections: Slab<SocketId, SocketChannel<T>, { T::MAX_CONNECTIONS }>,
+    pub(crate) connections: Slab<SocketId, SocketChannel<T>, { T::MAX_CONNECTIONS }>,
 }
 
 impl<T: ServerSocketService> SocketEvents<T>
@@ -142,11 +194,9 @@ where
     ) -> Result<(), ()> {
         let socket = unsafe { self.connections.get_unchecked_mut(socket_id) };
         socket.is_write_or_close_event_toggled = true;
-
         socket
             .connection_state
             .encode_client_bound_packet(packet, &mut socket.write_buffer)?;
-
         self.write_or_close_events
             .push(socket_id.clone())
             .map_err(|_| ())?;
@@ -159,6 +209,16 @@ where
             socket.is_closed = true;
             socket.is_write_or_close_event_toggled = true;
             unsafe { self.write_or_close_events.push_unchecked(socket_id.clone()) }
+        }
+    }
+
+    pub(crate) fn register_write_event(&mut self, socket_id: &SocketId) {
+        let socket = unsafe { self.connections.get_unchecked(socket_id) };
+        if !socket.is_write_or_close_event_toggled {
+            self.write_or_close_events
+                .push(socket_id.clone())
+                .map_err(|_| ())
+                .unwrap();
         }
     }
 }
@@ -175,7 +235,10 @@ where
         registry: &mut SocketEvents<T>,
         socket_registry: &mut <Stream as Socket>::Registry,
     ) {
-        if let Ok(socket_id) = self.connections.add_with_index(|_index| stream) {
+        if let Ok(socket_id) = self
+            .connections
+            .add_with_index(|_index| Connection::new(stream))
+        {
             let socket_id = SocketId::from(socket_id);
             let socket = unsafe { self.connections.get_unchecked_mut(&socket_id) };
             registry
@@ -191,6 +254,7 @@ where
                 .unwrap();
 
             socket
+                .stream
                 .open(&socket_id, socket_registry)
                 .map_err(|_| ())
                 .unwrap();
@@ -203,12 +267,26 @@ where
         self.service.tick();
     }
 
-    pub fn on_poll_read(&mut self, token: usize, registry: &mut SocketEvents<T>) {
+    pub fn on_poll_read(&mut self, token: usize, registry: &mut SocketEvents<T>)
+    where
+        [(); T::MAX_CONNECTIONS]:,
+        [(); T::READ_BUFFER_LENGTH]:,
+        [(); T::WRITE_BUFFER_LENGTH]:,
+    {
         let socket_id = SocketId::from(token);
         let mut read = || -> Result<(), ()> {
             let stream = unsafe { self.connections.get_unchecked_mut(&socket_id) };
             let socket = unsafe { registry.connections.get_unchecked_mut(&socket_id) };
-            stream.read(&mut socket.read_buffer).map_err(|_| ())?;
+            stream
+                .stream
+                .read(&mut socket.read_buffer)
+                .map_err(|_| ())?;
+            if let Err(err) = stream.channel.on_read(&socket_id, registry) {
+                return match err {
+                    SocketReadError::NotFullRead => Ok(()),
+                    SocketReadError::SocketClosed => Err(()),
+                };
+            }
             while {
                 let socket = unsafe { registry.connections.get_unchecked_mut(&socket_id) };
                 socket.read_buffer.remaining().clone()
@@ -238,13 +316,24 @@ where
         let mut index = 0;
         while index < registry.write_or_close_events.len() {
             let socket_id = unsafe { registry.write_or_close_events.get_unchecked_mut(index) };
+            let socket_id = &socket_id.clone();
             index += 1;
             let stream = unsafe { self.connections.get_unchecked_mut(socket_id) };
             let socket = unsafe { registry.connections.get_unchecked_mut(socket_id) };
+            let is_closed = socket.is_closed;
             socket.is_write_or_close_event_toggled = false;
-            if socket.is_closed || stream.write(&mut socket.write_buffer).is_err() {
-                let _result = stream.close(socket_registry);
-                let socket_id = &socket_id.clone();
+
+            let mut f = || -> Result<(), ()> {
+                stream.channel.on_write(socket_id, registry)?;
+                let socket = unsafe { registry.connections.get_unchecked_mut(socket_id) };
+                stream
+                    .stream
+                    .write(&mut socket.write_buffer)
+                    .map_err(|_| ())?;
+                Ok(())
+            };
+            if is_closed || f().is_err() {
+                let _result = stream.stream.close(socket_registry);
                 self.service.close(socket_id, registry);
                 unsafe { self.connections.remove_unchecked(socket_id) };
                 unsafe { registry.connections.remove_unchecked(socket_id) };
