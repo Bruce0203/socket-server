@@ -2,9 +2,9 @@ use fast_collections::{Clear, Cursor, CursorReadTransmute, GetUnchecked, Push, P
 use httparse::{Request, EMPTY_HEADER};
 use sha1::{Digest, Sha1};
 
-use crate::{
-    writable_byte_channel::WritableByteChannel, Accept, Close, Flush, Open, Read, ReadError, Write,
-};
+use crate::{Accept, Close, Flush, Open, Read, ReadError, Write};
+
+use super::writable_byte_channel::WritableByteChannel;
 
 #[derive(Default, PartialEq, Eq, PartialOrd, Ord)]
 enum WebSocketState {

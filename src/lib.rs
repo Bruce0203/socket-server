@@ -2,12 +2,9 @@
 #![feature(generic_arg_infer)]
 
 pub mod connection;
-pub mod readable_byte_channel;
 pub mod selector;
 pub mod stream;
 pub mod tick_machine;
-pub mod websocket;
-pub mod writable_byte_channel;
 
 use std::marker::PhantomData;
 

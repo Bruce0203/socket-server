@@ -3,9 +3,9 @@ use std::ops::DerefMut;
 use fast_collections::Cursor;
 use packetize::{ClientBoundPacketStream, ServerBoundPacketStream};
 
-use crate::{
-    writable_byte_channel::WritableByteChannel, Accept, Close, Flush, Open, Read, ReadError, Write,
-};
+use crate::{Accept, Close, Flush, Open, Read, ReadError, Write};
+
+use super::writable_byte_channel::WritableByteChannel;
 
 pub struct ServerBoundPacketStreamPipe<T, S> {
     pub stream: T,

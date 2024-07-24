@@ -3,9 +3,8 @@ use std::time::Duration;
 use fast_collections::{AddWithIndex, Clear, Cursor, GetUnchecked, Push, Slab, Vec};
 
 use crate::{
-    stream::{mock::MockStream, tcp::MioTcpStream},
-    tick_machine::TickMachine,
-    Accept, Close, Flush, Id, Open, Read, ReadError, Write,
+    stream::tcp::MioTcpStream, tick_machine::TickMachine, Accept, Close, Flush, Id, Open, Read,
+    ReadError, Write,
 };
 
 #[derive(derive_more::Deref, derive_more::DerefMut)]
@@ -13,7 +12,7 @@ pub struct Selector<T, S, const N: usize> {
     #[deref]
     #[deref_mut]
     server: T,
-    connections: Slab<Id<S>, S, N>,
+    pub(crate) connections: Slab<Id<S>, S, N>,
     write_or_close_events: Vec<Id<S>, N>,
 }
 
@@ -123,45 +122,6 @@ impl<S, T: SelectorListener<SelectableChannel<S>>, const MAX_CONNECTIONS: usize>
     }
 }
 
-#[derive(Default, derive_more::Deref, derive_more::DerefMut)]
-pub struct MockSelector<T, S, const N: usize>(Selector<T, S, N>);
-
-impl<T, S, const N: usize> MockSelector<T, S, N> {
-    pub fn new(server: T) -> Self {
-        Self(Selector::new(server))
-    }
-}
-
-impl<T: SelectorListener<SelectableChannel<S>>, const N: usize, S>
-    MockSelector<T, SelectableChannel<S>, N>
-{
-    pub fn entry_point<const LEN: usize>(mut self, _port: u16, timeout: Duration) -> !
-    where
-        S: Close<Registry = <MockStream as Close>::Registry>
-            + Write<Cursor<u8, LEN>>
-            + Flush
-            + Accept<MockStream>,
-    {
-        let socket_id = self
-            .connections
-            .add_with_index(|_i| Accept::accept(MockStream::default()))
-            .unwrap();
-        let socket_id = Id::from(socket_id);
-        loop {
-            T::tick(&mut self).unwrap();
-            match T::read(&mut self, socket_id.clone()) {
-                Ok(()) => {}
-                Err(err) => match err {
-                    ReadError::NotFullRead => { /*TODO acc rate limit*/ }
-                    ReadError::SocketClosed => self.request_socket_close(socket_id.clone()),
-                    ReadError::FlushRequest => self.request_socket_flush(socket_id.clone()),
-                },
-            };
-            self.flush_all_sockets(&mut ());
-        }
-    }
-}
-
 #[derive(derive_more::Deref, derive_more::DerefMut)]
 pub struct SelectableChannel<T> {
     #[deref]
@@ -238,27 +198,21 @@ pub enum SelectorState {
 }
 
 impl<T, S: Close + Flush, const N: usize> Selector<T, SelectableChannel<S>, N> {
-    pub fn request_socket_close(&mut self, socket_id: Id<SelectableChannel<S>>) {
-        let socket = unsafe { self.connections.get_unchecked_mut(&socket_id) };
+    pub fn request_socket_close(&mut self, id: Id<SelectableChannel<S>>) {
+        let socket = self.get_mut(&id);
         socket.state = SelectorState::CloseRequested;
-        self.write_or_close_events
-            .push(socket_id)
-            .map_err(|_| ())
-            .unwrap();
+        self.write_or_close_events.push(id).map_err(|_| ()).unwrap();
     }
 
-    pub fn request_socket_flush(&mut self, socket_id: Id<SelectableChannel<S>>) {
-        let socket = unsafe { self.connections.get_unchecked_mut(&socket_id) };
+    pub fn request_socket_flush(&mut self, id: Id<SelectableChannel<S>>) {
+        let socket = self.get_mut(&id);
         if socket.state == SelectorState::Idle {
             socket.state = SelectorState::FlushRequested;
-            self.write_or_close_events
-                .push(socket_id)
-                .map_err(|_| ())
-                .unwrap();
+            self.write_or_close_events.push(id).map_err(|_| ()).unwrap();
         }
     }
 
-    pub(self) fn flush_all_sockets(&mut self, registry: &mut <S as Close>::Registry) {
+    pub(crate) fn flush_all_sockets(&mut self, registry: &mut <S as Close>::Registry) {
         let len = self.write_or_close_events.len();
         let mut index = 0;
         while index < len {
