@@ -2,7 +2,10 @@ use fast_collections::Cursor;
 
 use crate::{Accept, Close, Flush, Open, Read, Write};
 
+#[derive(derive_more::Deref, derive_more::DerefMut)]
 pub struct ReadableByteChannel<T, const LEN: usize> {
+    #[deref]
+    #[deref_mut]
     pub stream: T,
     pub read_buf: Cursor<u8, LEN>,
 }

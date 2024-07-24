@@ -1,7 +1,11 @@
+use std::ops::DerefMut;
+
 use fast_collections::Cursor;
 use packetize::{ClientBoundPacketStream, ServerBoundPacketStream};
 
-use crate::{Accept, Close, Flush, Read, ReadError, Write};
+use crate::{
+    writable_byte_channel::WritableByteChannel, Accept, Close, Flush, Open, Read, ReadError, Write,
+};
 
 pub struct ServerBoundPacketStreamPipe<T, S> {
     pub stream: T,
@@ -85,9 +89,33 @@ impl<T: Flush, S> Flush for ClientBoundPacketStreamPipe<T, S> {
     }
 }
 
-impl<T: Write<T2>, T2, S> Write<T2> for ServerBoundPacketStreamPipe<T, S> {
+impl<T: Write<T2>, T2, S: ServerBoundPacketStream> Write<T2> for ServerBoundPacketStreamPipe<T, S> {
     fn write(&mut self, write_buf: &mut T2) -> Result<(), Self::Error> {
         self.stream.write(write_buf)
+    }
+}
+
+impl<T, S: ClientBoundPacketStream, const LEN: usize>
+    ServerBoundPacketStreamPipe<WritableByteChannel<T, LEN>, S>
+{
+    pub fn write(&mut self, packet: S::BoundPacket) -> Result<(), ReadError> {
+        self.state
+            .encode_client_bound_packet(&packet, &mut self.stream.write_buf)
+            .map_err(|()| ReadError::SocketClosed)
+    }
+}
+
+impl<
+        T: DerefMut<Target = WritableByteChannel<T2, LEN>>,
+        T2,
+        S: ClientBoundPacketStream,
+        const LEN: usize,
+    > ServerBoundPacketStreamPipe<T, S>
+{
+    pub fn write(&mut self, packet: S::BoundPacket) -> Result<(), ReadError> {
+        self.state
+            .encode_client_bound_packet(&packet, &mut self.stream.write_buf)
+            .map_err(|()| ReadError::SocketClosed)
     }
 }
 
@@ -141,5 +169,25 @@ impl<T: Accept<A>, S: Default, A> Accept<A> for ClientBoundPacketStreamPipe<T, S
             stream: T::accept(accept),
             state: Default::default(),
         }
+    }
+}
+
+impl<T: Open, S> Open for ClientBoundPacketStreamPipe<T, S> {
+    type Error = T::Error;
+
+    type Registry = T::Registry;
+
+    fn open(&mut self, registry: &mut mio::Registry) -> Result<(), Self::Error> {
+        self.stream.open(registry)
+    }
+}
+
+impl<T: Open, S> Open for ServerBoundPacketStreamPipe<T, S> {
+    type Error = T::Error;
+
+    type Registry = T::Registry;
+
+    fn open(&mut self, registry: &mut mio::Registry) -> Result<(), Self::Error> {
+        self.stream.open(registry)
     }
 }

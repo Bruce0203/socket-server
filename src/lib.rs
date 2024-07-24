@@ -3,12 +3,13 @@
 
 pub mod connection;
 pub mod readable_byte_channel;
+pub mod selector;
 pub mod stream;
 pub mod tick_machine;
 pub mod websocket;
 pub mod writable_byte_channel;
 
-use std::{marker::PhantomData, time::Duration};
+use std::marker::PhantomData;
 
 use fast_collections::{Cursor, GetUnchecked, Slab};
 use mio::Registry;
@@ -26,6 +27,7 @@ pub trait Read {
 #[derive(Debug)]
 pub enum ReadError {
     NotFullRead,
+    FlushRequest,
     SocketClosed,
 }
 
@@ -55,16 +57,12 @@ pub trait Accept<T>: Sized {
     fn accept(accept: T) -> Self;
 }
 
-//WebSocket<TcpStream>
-//open(self)
-//read(self, socket)
-//write(self, socket)
-//close(self, socket)
-
 pub struct Repo<T> {
     elements: Slab<Id<T>, T, 100>,
 }
 
+#[repr(C)]
+#[derive(Debug)]
 pub struct Id<T> {
     inner: NonMaxUsize,
     _marker: PhantomData<T>,
@@ -88,6 +86,15 @@ impl<T> Clone for Id<T> {
 impl<T> Into<usize> for &Id<T> {
     fn into(self) -> usize {
         self.inner.get()
+    }
+}
+
+impl<T> From<usize> for Id<T> {
+    fn from(value: usize) -> Self {
+        Self {
+            inner: unsafe { NonMaxUsize::new_unchecked(value) },
+            _marker: PhantomData,
+        }
     }
 }
 
