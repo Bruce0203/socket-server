@@ -1,13 +1,94 @@
-#![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
+#![feature(try_blocks)]
+#![feature(generic_arg_infer)]
 
-pub mod mio;
-
-pub mod mock;
-mod socket;
+pub mod readable_byte_channel;
+pub mod stream;
 pub mod tick_machine;
-
-pub use socket::*;
-
-#[cfg(feature = "websocket")]
 pub mod websocket;
+pub mod writable_byte_channel;
+
+use std::{marker::PhantomData, time::Duration};
+
+use fast_collections::{Cursor, GetUnchecked, Slab};
+use mio::Registry;
+use nonmax::NonMaxUsize;
+
+pub trait Read {
+    type Ok;
+    type Error;
+    fn read<const N: usize>(
+        &mut self,
+        read_buf: &mut Cursor<u8, N>,
+    ) -> Result<Self::Ok, Self::Error>;
+}
+
+#[derive(Debug)]
+pub enum ReadError {
+    NotFullRead,
+    SocketClosed,
+}
+
+pub trait Write {
+    type Error;
+    type Write;
+    fn write<const N: usize>(&mut self, write: &mut Self::Write) -> Result<(), Self::Error>;
+    fn flush(&mut self) -> Result<(), Self::Error>;
+}
+
+pub trait Close {
+    type Error;
+    type Registry;
+    fn is_closed(&self) -> bool;
+    fn close(&mut self, registry: &mut Self::Registry) -> Result<(), Self::Error>;
+}
+
+pub trait Open {
+    type Error;
+    type Registry;
+    fn open(&mut self, registry: &mut Registry) -> Result<(), Self::Error>;
+}
+
+pub trait EntryPoint {
+    fn entry_point(self, port: u16, tick: Duration) -> !;
+}
+
+//WebSocket<TcpStream>
+//open(self)
+//read(self, socket)
+//write(self, socket)
+//close(self, socket)
+
+pub struct Repo<T> {
+    elements: Slab<Id<T>, T, 100>,
+}
+
+pub struct Id<T> {
+    inner: NonMaxUsize,
+    _marker: PhantomData<T>,
+}
+
+impl<T> Clone for Id<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T> Into<usize> for &Id<T> {
+    fn into(self) -> usize {
+        self.inner.get()
+    }
+}
+
+impl<T> Repo<T> {
+    pub fn get_mut(&mut self, id: &Id<T>) -> &mut T {
+        unsafe { self.elements.get_unchecked_mut(id) }
+    }
+
+    pub fn get(&mut self, id: &Id<T>) -> &T {
+        unsafe { self.elements.get_unchecked(id) }
+    }
+}
