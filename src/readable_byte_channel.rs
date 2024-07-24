@@ -1,6 +1,6 @@
 use fast_collections::Cursor;
 
-use crate::{Close, Open, Read, Write};
+use crate::{Accept, Close, Flush, Open, Read, Write};
 
 pub struct ReadableByteChannel<T, const LEN: usize> {
     pub stream: T,
@@ -16,6 +16,15 @@ impl<T, const LEN: usize> From<T> for ReadableByteChannel<T, LEN> {
     }
 }
 
+impl<T: Accept<A>, const LEN: usize, A> Accept<A> for ReadableByteChannel<T, LEN> {
+    fn accept(accept: A) -> Self {
+        Self {
+            stream: T::accept(accept),
+            read_buf: Cursor::default(),
+        }
+    }
+}
+
 impl<T: Read, const LEN: usize> Read for ReadableByteChannel<T, LEN> {
     type Ok = T::Ok;
     type Error = T::Error;
@@ -25,13 +34,14 @@ impl<T: Read, const LEN: usize> Read for ReadableByteChannel<T, LEN> {
     }
 }
 
-impl<T: Write, const LEN: usize> Write for ReadableByteChannel<T, LEN> {
-    type Error = T::Error;
-
-    fn write<const N: usize>(&mut self, write_buf: &mut Cursor<u8, N>) -> Result<(), Self::Error> {
+impl<T: Write<T2>, T2, const LEN: usize> Write<T2> for ReadableByteChannel<T, LEN> {
+    fn write(&mut self, write_buf: &mut T2) -> Result<(), Self::Error> {
         self.stream.write(write_buf)
     }
+}
 
+impl<T: Flush, const LEN: usize> Flush for ReadableByteChannel<T, LEN> {
+    type Error = T::Error;
     fn flush(&mut self) -> Result<(), Self::Error> {
         self.stream.flush()
     }
@@ -60,4 +70,3 @@ impl<T: Open, const LEN: usize> Open for ReadableByteChannel<T, LEN> {
         self.stream.open(registry)
     }
 }
-

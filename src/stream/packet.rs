@@ -1,39 +1,39 @@
 use fast_collections::Cursor;
 use packetize::{ClientBoundPacketStream, ServerBoundPacketStream};
 
-use crate::{Read, ReadError, Write};
+use crate::{Accept, Close, Flush, Read, ReadError, Write};
 
-pub struct ServerPacketStreamPipe<T, S> {
-    pub socket: T,
+pub struct ServerBoundPacketStreamPipe<T, S> {
+    pub stream: T,
     state: S,
 }
 
-impl<T, S: Default> From<T> for ServerPacketStreamPipe<T, S> {
+impl<T, S: Default> From<T> for ServerBoundPacketStreamPipe<T, S> {
     fn from(value: T) -> Self {
         Self {
-            socket: value,
+            stream: value,
             state: S::default(),
         }
     }
 }
 
-impl<T, S> ServerPacketStreamPipe<T, S> {
+impl<T, S> ServerBoundPacketStreamPipe<T, S> {
     pub fn new(value: T, state: S) -> Self {
         Self {
-            socket: value,
+            stream: value,
             state,
         }
     }
 }
 
 impl<T: Read<Error = ReadError>, S: ClientBoundPacketStream + ServerBoundPacketStream> Read
-    for ServerPacketStreamPipe<T, S>
+    for ServerBoundPacketStreamPipe<T, S>
 {
     type Ok = <S as ServerBoundPacketStream>::BoundPacket;
     type Error = ReadError;
 
     fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<Self::Ok, T::Error> {
-        self.socket.read(read_buf)?;
+        self.stream.read(read_buf)?;
         Ok(self
             .state
             .decode_server_bound_packet(read_buf)
@@ -41,27 +41,27 @@ impl<T: Read<Error = ReadError>, S: ClientBoundPacketStream + ServerBoundPacketS
     }
 }
 
-pub struct ClientPacketStreamPipe<T, S> {
-    socket: T,
+pub struct ClientBoundPacketStreamPipe<T, S> {
+    stream: T,
     state: S,
 }
 
-impl<T, S> ClientPacketStreamPipe<T, S> {
+impl<T, S> ClientBoundPacketStreamPipe<T, S> {
     pub fn new(value: T, state: S) -> Self {
         Self {
-            socket: value,
+            stream: value,
             state,
         }
     }
 }
 
 impl<T: Read<Error = ReadError>, S: ClientBoundPacketStream + ServerBoundPacketStream> Read
-    for ClientPacketStreamPipe<T, S>
+    for ClientBoundPacketStreamPipe<T, S>
 {
     type Ok = <S as ClientBoundPacketStream>::BoundPacket;
     type Error = ReadError;
     fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<Self::Ok, T::Error> {
-        self.socket.read(read_buf)?;
+        self.stream.read(read_buf)?;
         Ok(self
             .state
             .decode_client_bound_packet(read_buf)
@@ -69,27 +69,77 @@ impl<T: Read<Error = ReadError>, S: ClientBoundPacketStream + ServerBoundPacketS
     }
 }
 
-impl<T: Write, S> Write for ClientPacketStreamPipe<T, S> {
-    type Error = T::Error;
-
-    fn write<const N: usize>(&mut self, write_buf: &mut Cursor<u8, N>) -> Result<(), Self::Error> {
-        self.socket.write(write_buf)
-    }
-
-    fn flush(&mut self) -> Result<(), Self::Error> {
-        self.socket.flush()
+impl<T: Write<Cursor<u8, LEN>>, const LEN: usize, S: ServerBoundPacketStream> Write<Cursor<u8, LEN>>
+    for ClientBoundPacketStreamPipe<T, S>
+{
+    fn write(&mut self, write_buf: &mut Cursor<u8, LEN>) -> Result<(), Self::Error> {
+        self.stream.write(write_buf)
     }
 }
 
-impl<T: Write, S> Write for ServerPacketStreamPipe<T, S> {
+impl<T: Flush, S> Flush for ClientBoundPacketStreamPipe<T, S> {
     type Error = T::Error;
 
-    fn write<const N: usize>(&mut self, write_buf: &mut Cursor<u8, N>) -> Result<(), Self::Error> {
-        self.socket.write(write_buf)
-    }
-
     fn flush(&mut self) -> Result<(), Self::Error> {
-        self.socket.flush()
+        self.stream.flush()
     }
 }
 
+impl<T: Write<T2>, T2, S> Write<T2> for ServerBoundPacketStreamPipe<T, S> {
+    fn write(&mut self, write_buf: &mut T2) -> Result<(), Self::Error> {
+        self.stream.write(write_buf)
+    }
+}
+
+impl<T: Flush, S> Flush for ServerBoundPacketStreamPipe<T, S> {
+    type Error = T::Error;
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        self.stream.flush()
+    }
+}
+
+impl<T: Close, S> Close for ServerBoundPacketStreamPipe<T, S> {
+    type Error = T::Error;
+
+    type Registry = T::Registry;
+
+    fn is_closed(&self) -> bool {
+        self.stream.is_closed()
+    }
+
+    fn close(&mut self, registry: &mut Self::Registry) -> Result<(), Self::Error> {
+        self.stream.close(registry)
+    }
+}
+
+impl<T: Close, S> Close for ClientBoundPacketStreamPipe<T, S> {
+    type Error = T::Error;
+
+    type Registry = T::Registry;
+
+    fn is_closed(&self) -> bool {
+        self.stream.is_closed()
+    }
+
+    fn close(&mut self, registry: &mut Self::Registry) -> Result<(), Self::Error> {
+        self.stream.close(registry)
+    }
+}
+
+impl<T: Accept<A>, S: Default, A> Accept<A> for ServerBoundPacketStreamPipe<T, S> {
+    fn accept(accept: A) -> Self {
+        Self {
+            stream: T::accept(accept),
+            state: Default::default(),
+        }
+    }
+}
+
+impl<T: Accept<A>, S: Default, A> Accept<A> for ClientBoundPacketStreamPipe<T, S> {
+    fn accept(accept: A) -> Self {
+        Self {
+            stream: T::accept(accept),
+            state: Default::default(),
+        }
+    }
+}

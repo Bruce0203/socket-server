@@ -1,7 +1,7 @@
-#![feature(generic_const_exprs)]
 #![feature(try_blocks)]
 #![feature(generic_arg_infer)]
 
+pub mod connection;
 pub mod readable_byte_channel;
 pub mod stream;
 pub mod tick_machine;
@@ -29,10 +29,12 @@ pub enum ReadError {
     SocketClosed,
 }
 
-pub trait Write {
+pub trait Write<T>: Flush {
+    fn write(&mut self, write: &mut T) -> Result<(), Self::Error>;
+}
+
+pub trait Flush {
     type Error;
-    type Write;
-    fn write<const N: usize>(&mut self, write: &mut Self::Write) -> Result<(), Self::Error>;
     fn flush(&mut self) -> Result<(), Self::Error>;
 }
 
@@ -49,8 +51,8 @@ pub trait Open {
     fn open(&mut self, registry: &mut Registry) -> Result<(), Self::Error>;
 }
 
-pub trait EntryPoint {
-    fn entry_point(self, port: u16, tick: Duration) -> !;
+pub trait Accept<T>: Sized {
+    fn accept(accept: T) -> Self;
 }
 
 //WebSocket<TcpStream>
@@ -67,6 +69,12 @@ pub struct Id<T> {
     inner: NonMaxUsize,
     _marker: PhantomData<T>,
 }
+
+const _: () = {
+    if size_of::<Id<()>>() != size_of::<usize>() {
+        panic!("size of id is not same as usize")
+    }
+};
 
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {

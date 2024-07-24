@@ -2,7 +2,9 @@ use fast_collections::{Clear, Cursor, CursorReadTransmute, GetUnchecked, Push, P
 use httparse::{Request, EMPTY_HEADER};
 use sha1::{Digest, Sha1};
 
-use crate::{writable_byte_channel::WritableByteChannel, Read, ReadError, Write};
+use crate::{
+    writable_byte_channel::WritableByteChannel, Accept, Close, Flush, Read, ReadError, Write,
+};
 
 #[derive(Default, PartialEq, Eq, PartialOrd, Ord)]
 enum WebSocketState {
@@ -26,7 +28,7 @@ impl<T> From<T> for WebSocket<T> {
     }
 }
 
-impl<T: Write + Read, const WRITE_BUF_LEN: usize> Read
+impl<T: Write<Cursor<u8, WRITE_BUF_LEN>> + Read, const WRITE_BUF_LEN: usize> Read
     for WebSocket<WritableByteChannel<T, WRITE_BUF_LEN>>
 {
     type Ok = ();
@@ -116,12 +118,10 @@ impl<T: Write + Read, const WRITE_BUF_LEN: usize> Read
     }
 }
 
-impl<T: Write, const WRITE_BUF_LEN: usize> Write
-    for WebSocket<WritableByteChannel<T, WRITE_BUF_LEN>>
+impl<T: Write<Cursor<u8, WRITE_BUF_LEN>>, const WRITE_BUF_LEN: usize>
+    Write<Cursor<u8, WRITE_BUF_LEN>> for WebSocket<WritableByteChannel<T, WRITE_BUF_LEN>>
 {
-    type Error = ();
-
-    fn write<const N: usize>(&mut self, write_buf: &mut Cursor<u8, N>) -> Result<(), Self::Error> {
+    fn write(&mut self, write_buf: &mut Cursor<u8, WRITE_BUF_LEN>) -> Result<(), Self::Error> {
         if self.state == WebSocketState::HandShaked {
             let mut buffer = Cursor::<u8, WRITE_BUF_LEN>::new();
             let payload = write_buf;
@@ -148,8 +148,36 @@ impl<T: Write, const WRITE_BUF_LEN: usize> Write
         }
         Ok(())
     }
+}
+
+impl<T: Flush> Flush for WebSocket<T> {
+    type Error = ();
 
     fn flush(&mut self) -> Result<(), Self::Error> {
-        self.stream.flush().map_err(|_| ())
+        self.stream.flush().map_err(|_| ())?;
+        Ok(())
+    }
+}
+
+impl<T: Accept<A>, A> Accept<A> for WebSocket<T> {
+    fn accept(accept: A) -> Self {
+        Self {
+            stream: T::accept(accept),
+            state: WebSocketState::default(),
+        }
+    }
+}
+
+impl<T: Close> Close for WebSocket<T> {
+    type Error = T::Error;
+
+    type Registry = T::Registry;
+
+    fn is_closed(&self) -> bool {
+        self.stream.is_closed()
+    }
+
+    fn close(&mut self, registry: &mut Self::Registry) -> Result<(), Self::Error> {
+        self.stream.close(registry)
     }
 }
