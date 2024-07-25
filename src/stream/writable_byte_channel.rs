@@ -23,13 +23,16 @@ impl<T: Accept<A>, A, const LEN: usize> Accept<A> for WritableByteChannel<T, LEN
             write_buf: Cursor::default(),
         }
     }
+
+    fn get_stream(&mut self) -> &mut A {
+        self.stream.get_stream()
+    }
 }
 
-impl<T: Read, const LEN: usize> Read for WritableByteChannel<T, LEN> {
-    type Ok = T::Ok;
+impl<T: Read<T2>, T2, const LEN: usize> Read<T2> for WritableByteChannel<T, LEN> {
     type Error = T::Error;
 
-    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<T::Ok, Self::Error> {
+    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<T2, Self::Error> {
         self.stream.read(read_buf)
     }
 }

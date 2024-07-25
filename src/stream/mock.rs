@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use fast_collections::{AddWithIndex, Cursor};
 
 use crate::{
@@ -7,37 +5,39 @@ use crate::{
     Accept, Close, Flush, Id, Read, ReadError, Write,
 };
 
+use super::readable_byte_channel::PollRead;
+
 #[derive(Default)]
 pub struct MockStream {
-    read_buf: Cursor<u8, 1000>,
-    write_buf: Cursor<u8, 1000>,
-    is_cosed: bool,
+    pub stream_read_buf: Cursor<u8, 1000>,
+    pub stream_write_buf: Cursor<u8, 1000>,
+    pub is_cosed: bool,
 }
 
 impl MockStream {
-    pub fn flex(&mut self) -> Result<(), ()> {
-        let mut temp = Cursor::new();
-        temp.push_from_cursor(&mut self.read_buf)?;
-        self.read_buf.push_from_cursor(&mut self.write_buf)?;
-        self.write_buf = temp;
+    pub fn flex(&mut self, stream: &mut Self) -> Result<(), ()> {
+        stream
+            .stream_write_buf
+            .push_from_cursor(&mut self.stream_read_buf)?;
+        self.stream_write_buf
+            .push_from_cursor(&mut stream.stream_read_buf)?;
         Ok(())
     }
 }
 
-impl Read for MockStream {
-    type Ok = ();
+impl Read<()> for MockStream {
     type Error = ReadError;
 
     fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<(), Self::Error> {
         read_buf
-            .push_from_cursor(&mut self.write_buf)
+            .push_from_cursor(&mut self.stream_write_buf)
             .map_err(|()| ReadError::SocketClosed)
     }
 }
 
 impl<const LEN: usize> Write<Cursor<u8, LEN>> for MockStream {
     fn write(&mut self, write_buf: &mut Cursor<u8, LEN>) -> Result<(), Self::Error> {
-        self.read_buf.push_from_cursor(write_buf)
+        self.stream_read_buf.push_from_cursor(write_buf)
     }
 }
 
@@ -68,10 +68,20 @@ impl Accept<MockStream> for MockStream {
     fn accept(accept: MockStream) -> Self {
         accept
     }
+
+    fn get_stream(&mut self) -> &mut MockStream {
+        self
+    }
 }
 
-#[derive(Default, derive_more::Deref, derive_more::DerefMut)]
+#[derive(derive_more::Deref, derive_more::DerefMut)]
 pub struct MockSelector<T, S, const N: usize>(Selector<T, S, N>);
+
+impl<T: Default, S, const N: usize> Default for MockSelector<T, S, N> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
 
 impl<T, S, const N: usize> MockSelector<T, S, N> {
     pub fn new(server: T) -> Self {
@@ -82,29 +92,57 @@ impl<T, S, const N: usize> MockSelector<T, S, N> {
 impl<T: SelectorListener<SelectableChannel<S>>, const N: usize, S>
     MockSelector<T, SelectableChannel<S>, N>
 {
-    pub fn entry_point<const LEN: usize>(mut self, _port: u16, timeout: Duration) -> !
-    where
+    pub fn entry_point<
+        T2: SelectorListener<SelectableChannel<S2>>,
+        S2: Close + Flush,
+        const N2: usize,
+    >(
+        mut self,
+        mut server: MockSelector<T2, SelectableChannel<S2>, N2>,
+    ) where
         S: Close<Registry = <MockStream as Close>::Registry>
-            + Write<Cursor<u8, LEN>>
             + Flush
-            + Accept<MockStream>,
+            + Accept<MockStream>
+            + PollRead<(), Error = ReadError>,
+        S2: Close<Registry = <MockStream as Close>::Registry>
+            + Flush
+            + Accept<MockStream>
+            + PollRead<(), Error = ReadError>,
     {
-        let socket_id = self
-            .connections
-            .add_with_index(|_i| Accept::accept(MockStream::default()))
-            .unwrap();
-        let socket_id = Id::from(socket_id);
+        let id = unsafe { Id::from(
+            self.connections
+                .add_with_index(|_i| Accept::accept(MockStream::default()))
+                .unwrap(),
+        ) };
+        T::accept(&mut self, id.clone());
+        let id2 = unsafe { Id::from(
+            server
+                .connections
+                .add_with_index(|_i| Accept::accept(MockStream::default()))
+                .unwrap(),
+        ) };
+        T2::accept(&mut server, id2.clone());
         loop {
+            let socket = self.get_mut(&id);
+            let socket2 = server.get_mut(&id2);
+            socket.get_stream().flex(socket2.get_stream()).unwrap();
+            if socket.is_closed() || socket2.is_closed() {
+                break;
+            }
             T::tick(&mut self).unwrap();
-            match T::read(&mut self, socket_id.clone()) {
-                Ok(()) => {}
-                Err(err) => match err {
-                    ReadError::NotFullRead => { /*TODO acc rate limit*/ }
-                    ReadError::SocketClosed => self.request_socket_close(socket_id.clone()),
-                    ReadError::FlushRequest => self.request_socket_flush(socket_id.clone()),
-                },
-            };
+            T2::tick(&mut server).unwrap();
+
+            let socket = self.get_mut(&id);
+            let socket2 = server.get_mut(&id2);
+            socket.get_stream().flex(socket2.get_stream()).unwrap();
+            if socket.get_stream().stream_write_buf.remaining() != 0 {
+                self.handle_read(id.clone(), &mut ());
+            }
+            if socket2.get_stream().stream_write_buf.remaining() != 0 {
+                server.handle_read(id2.clone(), &mut ());
+            }
             self.flush_all_sockets(&mut ());
+            server.flush_all_sockets(&mut ());
         }
     }
 }

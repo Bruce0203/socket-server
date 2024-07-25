@@ -1,4 +1,5 @@
 #![feature(try_blocks)]
+#![feature(specialization)]
 #![feature(generic_arg_infer)]
 
 pub mod connection;
@@ -6,19 +7,15 @@ pub mod selector;
 pub mod stream;
 pub mod tick_machine;
 
-use std::marker::PhantomData;
+use std::{fmt::Debug, marker::PhantomData};
 
-use fast_collections::{Cursor, GetUnchecked, Slab};
+use fast_collections::Cursor;
 use mio::Registry;
 use nonmax::NonMaxUsize;
 
-pub trait Read {
-    type Ok;
+pub trait Read<T> {
     type Error;
-    fn read<const N: usize>(
-        &mut self,
-        read_buf: &mut Cursor<u8, N>,
-    ) -> Result<Self::Ok, Self::Error>;
+    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<T, Self::Error>;
 }
 
 #[derive(Debug)]
@@ -51,18 +48,22 @@ pub trait Open {
 }
 
 pub trait Accept<T>: Sized {
+    fn get_stream(&mut self) -> &mut T;
     fn accept(accept: T) -> Self;
 }
 
-pub struct Repo<T> {
-    elements: Slab<Id<T>, T, 100>,
-}
-
 #[repr(C)]
-#[derive(Debug)]
 pub struct Id<T> {
     inner: NonMaxUsize,
     _marker: PhantomData<T>,
+}
+
+impl<T> Copy for Id<T> {}
+
+impl<T> Debug for Id<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Id").field("id", &self.inner).finish()
+    }
 }
 
 const _: () = {
@@ -86,21 +87,28 @@ impl<T> Into<usize> for &Id<T> {
     }
 }
 
-impl<T> From<usize> for Id<T> {
-    fn from(value: usize) -> Self {
+impl<T> Into<usize> for Id<T> {
+    fn into(self) -> usize {
+        self.inner.get()
+    }
+}
+
+impl<T> Into<NonMaxUsize> for Id<T> {
+    fn into(self) -> NonMaxUsize {
+        self.inner
+    }
+}
+impl<T> Into<NonMaxUsize> for &Id<T> {
+    fn into(self) -> NonMaxUsize {
+        self.inner
+    }
+}
+
+impl<T> Id<T> {
+    pub unsafe fn from(value: usize) -> Self {
         Self {
             inner: unsafe { NonMaxUsize::new_unchecked(value) },
             _marker: PhantomData,
         }
-    }
-}
-
-impl<T> Repo<T> {
-    pub fn get_mut(&mut self, id: &Id<T>) -> &mut T {
-        unsafe { self.elements.get_unchecked_mut(id) }
-    }
-
-    pub fn get(&mut self, id: &Id<T>) -> &T {
-        unsafe { self.elements.get_unchecked(id) }
     }
 }

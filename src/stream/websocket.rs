@@ -31,10 +31,9 @@ impl<T> From<T> for WebSocketServer<T> {
     }
 }
 
-impl<T: Write<Cursor<u8, WRITE_BUF_LEN>> + Read, const WRITE_BUF_LEN: usize> Read
+impl<T: Write<Cursor<u8, WRITE_BUF_LEN>> + Read<()>, const WRITE_BUF_LEN: usize> Read<()>
     for WebSocketServer<WritableByteChannel<T, WRITE_BUF_LEN>>
 {
-    type Ok = ();
     type Error = ReadError;
 
     fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<(), Self::Error> {
@@ -175,6 +174,10 @@ impl<T: Accept<A>, A> Accept<A> for WebSocketServer<T> {
             stream: T::accept(accept),
             state: WebSocketState::default(),
         }
+    }
+
+    fn get_stream(&mut self) -> &mut A {
+        self.stream.get_stream()
     }
 }
 

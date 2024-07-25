@@ -1,6 +1,18 @@
 use fast_collections::Cursor;
 
-use crate::{Accept, Close, Flush, Open, Read, Write};
+use crate::{Accept, Close, Flush, Open, Read, ReadError, Write};
+
+use super::packet::{ReadPacket, WritePacket};
+
+pub trait PollRead<T>: Read<T> {
+    fn poll_read(&mut self) -> Result<T, Self::Error>;
+}
+
+impl<T: Read<T2>, T2, const LEN: usize> PollRead<T2> for ReadableByteChannel<T, LEN> {
+    fn poll_read(&mut self) -> Result<T2, Self::Error> {
+        self.stream.read(&mut self.read_buf)
+    }
+}
 
 #[derive(derive_more::Deref, derive_more::DerefMut)]
 pub struct ReadableByteChannel<T, const LEN: usize> {
@@ -26,13 +38,16 @@ impl<T: Accept<A>, const LEN: usize, A> Accept<A> for ReadableByteChannel<T, LEN
             read_buf: Cursor::default(),
         }
     }
+
+    fn get_stream(&mut self) -> &mut A {
+        self.stream.get_stream()
+    }
 }
 
-impl<T: Read, const LEN: usize> Read for ReadableByteChannel<T, LEN> {
-    type Ok = T::Ok;
+impl<T: Read<T2>, T2, const LEN: usize> Read<T2> for ReadableByteChannel<T, LEN> {
     type Error = T::Error;
 
-    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<T::Ok, Self::Error> {
+    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<T2, Self::Error> {
         self.stream.read(read_buf)
     }
 }
@@ -71,5 +86,21 @@ impl<T: Open, const LEN: usize> Open for ReadableByteChannel<T, LEN> {
 
     fn open(&mut self, registry: &mut mio::Registry) -> Result<(), Self::Error> {
         self.stream.open(registry)
+    }
+}
+
+impl<P, T: WritePacket<P>, const LEN: usize> WritePacket<P> for ReadableByteChannel<T, LEN> {
+    fn send(&mut self, packet: P) -> Result<(), crate::ReadError> {
+        self.stream.send(packet)
+    }
+}
+
+pub trait ReceivePacket<T> {
+    fn recv(&mut self) -> Result<T, ReadError>;
+}
+
+impl<T: ReadPacket<P>, P, const LEN: usize> ReceivePacket<P> for ReadableByteChannel<T, LEN> {
+    fn recv(&mut self) -> Result<P, ReadError> {
+        self.stream.recv(&mut self.read_buf)
     }
 }

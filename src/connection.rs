@@ -1,8 +1,14 @@
-use crate::{Accept, Close, Flush, Open, Write};
+use crate::{
+    stream::{
+        packet::WritePacket,
+        readable_byte_channel::{PollRead, ReceivePacket},
+    },
+    Accept, Close, Flush, Open, Read, Write,
+};
 
 #[derive(derive_more::Deref, derive_more::DerefMut)]
 pub struct ConnectionPipe<T, S> {
-    stream: T,
+    pub stream: T,
     #[deref]
     #[deref_mut]
     connection: S,
@@ -14,6 +20,10 @@ impl<T: Accept<A>, S: Default, A> Accept<A> for ConnectionPipe<T, S> {
             stream: T::accept(accept),
             connection: S::default(),
         }
+    }
+
+    fn get_stream(&mut self) -> &mut A {
+        self.stream.get_stream()
     }
 }
 
@@ -60,5 +70,34 @@ impl<T: Flush, S> Flush for ConnectionPipe<T, S> {
 
     fn flush(&mut self) -> Result<(), Self::Error> {
         self.stream.flush()
+    }
+}
+
+impl<T: Read<T2>, T2, S> Read<T2> for ConnectionPipe<T, S> {
+    type Error = T::Error;
+
+    fn read<const N: usize>(
+        &mut self,
+        read_buf: &mut fast_collections::Cursor<u8, N>,
+    ) -> Result<T2, Self::Error> {
+        self.stream.read(read_buf)
+    }
+}
+
+impl<P, T: WritePacket<P>, S> WritePacket<P> for ConnectionPipe<T, S> {
+    fn send(&mut self, packet: P) -> Result<(), crate::ReadError> {
+        self.stream.send(packet)
+    }
+}
+
+impl<T: PollRead<T2>, T2, S> PollRead<T2> for ConnectionPipe<T, S> {
+    fn poll_read(&mut self) -> Result<T2, Self::Error> {
+        self.stream.poll_read()
+    }
+}
+
+impl<T: ReceivePacket<P>, S, P> ReceivePacket<P> for ConnectionPipe<T, S> {
+    fn recv(&mut self) -> Result<P, crate::ReadError> {
+        self.stream.recv()
     }
 }

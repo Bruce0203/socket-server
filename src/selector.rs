@@ -1,10 +1,8 @@
-use std::time::Duration;
-
-use fast_collections::{AddWithIndex, Clear, Cursor, GetUnchecked, Push, Slab, Vec};
+use fast_collections::{Clear, Cursor, GetUnchecked, Push, Slab, Vec};
 
 use crate::{
-    stream::tcp::MioTcpStream, tick_machine::TickMachine, Accept, Close, Flush, Id, Open, Read,
-    ReadError, Write,
+    stream::{packet::WritePacket, readable_byte_channel::PollRead},
+    Accept, Close, Flush, Id, Open, Read, ReadError, Write,
 };
 
 #[derive(derive_more::Deref, derive_more::DerefMut)]
@@ -60,66 +58,7 @@ pub trait SelectorListener<T>: Sized {
     fn tick<const N: usize>(server: &mut Selector<Self, T, N>) -> Result<(), ()>;
     fn accept<const N: usize>(server: &mut Selector<Self, T, N>, id: Id<T>);
     fn read<const N: usize>(server: &mut Selector<Self, T, N>, id: Id<T>) -> Result<(), ReadError>;
-}
-
-impl<S, T: SelectorListener<SelectableChannel<S>>, const MAX_CONNECTIONS: usize>
-    Selector<T, SelectableChannel<S>, MAX_CONNECTIONS>
-{
-    pub fn entry_point<const LEN: usize>(mut self, port: u16, tick_period: Duration) -> !
-    where
-        SelectableChannel<S>: Accept<MioTcpStream>,
-        S: Close<Registry = mio::Registry> + Write<Cursor<u8, LEN>> + Flush + Read + Open,
-    {
-        let mut events = mio::Events::with_capacity(MAX_CONNECTIONS);
-        const LISTENER_INDEX: usize = usize::MAX;
-        let mut poll = mio::Poll::new().unwrap();
-        let mut registry = poll.registry().try_clone().unwrap();
-        let listener = {
-            let addr = format!("[::]:{port}").parse().unwrap();
-            let mut listener = mio::net::TcpListener::bind(addr).unwrap();
-            let lisetner_token = mio::Token(LISTENER_INDEX);
-            let interest = mio::Interest::READABLE;
-            mio::event::Source::register(&mut listener, &registry, lisetner_token, interest)
-                .unwrap();
-            listener
-        };
-        let mut tick_machine = TickMachine::new(tick_period);
-        loop {
-            poll.poll(&mut events, Some(Duration::ZERO)).unwrap();
-            tick_machine.tick(|| T::tick(&mut self).unwrap());
-            for event in events.iter() {
-                if event.token().0 == LISTENER_INDEX {
-                    if let Ok(socket_id) = self.connections.add_with_index(|index| {
-                        let stream: mio::net::TcpStream = listener.accept().unwrap().0.into();
-                        let token = mio::Token(*index);
-                        SelectableChannel::accept(MioTcpStream {
-                            stream,
-                            token,
-                            is_closed: false,
-                        })
-                    }) {
-                        let socket_id = Id::from(socket_id);
-                        let socket = self.get_mut(&socket_id);
-                        socket.open(&mut registry).map_err(|_| ()).unwrap();
-                        T::accept(&mut self, socket_id)
-                    }
-                } else {
-                    let socket_id = event.token();
-
-                    let socket_id = Id::from(socket_id.0);
-                    match T::read(&mut self, socket_id.clone()) {
-                        Ok(()) => {}
-                        Err(err) => match err {
-                            ReadError::NotFullRead => { /*TODO acc rate limit*/ }
-                            ReadError::FlushRequest => self.request_socket_flush(socket_id),
-                            ReadError::SocketClosed => self.request_socket_close(socket_id),
-                        },
-                    };
-                }
-            }
-            self.flush_all_sockets(&mut registry)
-        }
-    }
+    fn close<const N: usize>(server: &mut Selector<Self, T, N>, id: Id<T>);
 }
 
 #[derive(derive_more::Deref, derive_more::DerefMut)]
@@ -136,6 +75,10 @@ impl<T: Accept<A>, A> Accept<A> for SelectableChannel<T> {
             stream: T::accept(accept),
             state: SelectorState::default(),
         }
+    }
+
+    fn get_stream(&mut self) -> &mut A {
+        self.stream.get_stream()
     }
 }
 
@@ -175,15 +118,10 @@ impl<T: Flush> Flush for SelectableChannel<T> {
     }
 }
 
-impl<T: Read> Read for SelectableChannel<T> {
-    type Ok = T::Ok;
-
+impl<T: Read<T2>, T2> Read<T2> for SelectableChannel<T> {
     type Error = T::Error;
 
-    fn read<const N: usize>(
-        &mut self,
-        read_buf: &mut Cursor<u8, N>,
-    ) -> Result<Self::Ok, Self::Error> {
+    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<T2, Self::Error> {
         self.stream.read(read_buf)
     }
 }
@@ -197,7 +135,12 @@ pub enum SelectorState {
     FlushRequested,
 }
 
-impl<T, S: Close + Flush, const N: usize> Selector<T, SelectableChannel<S>, N> {
+impl<
+        T: SelectorListener<SelectableChannel<S>>,
+        S: Close + Flush + PollRead<(), Error = ReadError>,
+        const N: usize,
+    > Selector<T, SelectableChannel<S>, N>
+{
     pub fn request_socket_close(&mut self, id: Id<SelectableChannel<S>>) {
         let socket = self.get_mut(&id);
         socket.state = SelectorState::CloseRequested;
@@ -212,6 +155,27 @@ impl<T, S: Close + Flush, const N: usize> Selector<T, SelectableChannel<S>, N> {
         }
     }
 
+    pub fn handle_read(
+        &mut self,
+        id: Id<SelectableChannel<S>>,
+        _registry: &mut <S as Close>::Registry,
+    ) {
+        let mut f = || -> Result<(), ReadError> {
+            let socket = self.get_mut(&id);
+            socket.poll_read()?;
+            T::read(self, id.clone())?;
+            Ok(())
+        };
+        match f() {
+            Ok(()) => {}
+            Err(err) => match err {
+                ReadError::NotFullRead => { /*TODO acc rate limit*/ }
+                ReadError::SocketClosed => self.request_socket_close(id.clone()),
+                ReadError::FlushRequest => self.request_socket_flush(id.clone()),
+            },
+        };
+    }
+
     pub(crate) fn flush_all_sockets(&mut self, registry: &mut <S as Close>::Registry) {
         let len = self.write_or_close_events.len();
         let mut index = 0;
@@ -222,6 +186,8 @@ impl<T, S: Close + Flush, const N: usize> Selector<T, SelectableChannel<S>, N> {
             match socket.state {
                 SelectorState::Idle | SelectorState::Closed => continue,
                 SelectorState::CloseRequested => {
+                    T::close(self, socket_id.clone());
+                    let socket = self.get_mut(&socket_id);
                     let _result = socket.stream.close(registry);
                 }
                 SelectorState::FlushRequested => {
@@ -233,5 +199,17 @@ impl<T, S: Close + Flush, const N: usize> Selector<T, SelectableChannel<S>, N> {
             }
         }
         self.write_or_close_events.clear();
+    }
+}
+
+impl<P, T: WritePacket<P>> WritePacket<P> for SelectableChannel<T> {
+    fn send(&mut self, packet: P) -> Result<(), ReadError> {
+        self.stream.send(packet)
+    }
+}
+
+impl<T: PollRead<T2>, T2> PollRead<T2> for SelectableChannel<T> {
+    fn poll_read(&mut self) -> Result<T2, Self::Error> {
+        self.stream.poll_read()
     }
 }
