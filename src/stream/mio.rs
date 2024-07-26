@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use super::{Accept, Close, Flush, Id, Open, Read, ReadError, Write};
 use crate::{
+    prelude::ConnectionPipe,
     selector::{SelectableChannel, Selector, SelectorListener},
     tick_machine::TickMachine,
 };
@@ -10,7 +11,7 @@ use fast_collections::{AddWithIndex, Cursor};
 use super::readable_byte_channel::PollRead;
 
 pub struct MioTcpStream {
-    pub stream: mio::net::TcpStream,
+    stream: mio::net::TcpStream,
     pub token: mio::Token,
     pub is_closed: bool,
 }
@@ -76,10 +77,12 @@ impl Open for MioTcpStream {
     }
 }
 
-impl<S, T: SelectorListener<S>, const MAX_CONNECTIONS: usize> Selector<T, S, MAX_CONNECTIONS> {
+impl<S, C, T: SelectorListener<S, C>, const MAX_CONNECTIONS: usize>
+    Selector<T, S, C, MAX_CONNECTIONS>
+{
     pub fn entry_point(mut self, port: u16, tick_period: Duration) -> !
     where
-        SelectableChannel<S>: Accept<MioTcpStream>,
+        SelectableChannel<ConnectionPipe<S, C>>: Accept<MioTcpStream>,
         S: Close<Registry = mio::Registry> + Flush + PollRead + Open<Registry = mio::Registry>,
     {
         let mut events = mio::Events::with_capacity(MAX_CONNECTIONS);

@@ -1,28 +1,31 @@
 use fast_collections::{Clear, Cursor, GetUnchecked, Push, Slab, Vec};
 
 use super::stream::{Accept, Close, Flush, Id, Open, Read, ReadError, Write};
-use crate::stream::{packet::WritePacket, readable_byte_channel::PollRead};
+use crate::{
+    prelude::ConnectionPipe,
+    stream::{packet::WritePacket, readable_byte_channel::PollRead},
+};
 
 #[derive(derive_more::Deref, derive_more::DerefMut)]
-pub struct Selector<T, S, const N: usize> {
+pub struct Selector<T, S, C, const N: usize> {
     #[deref]
     #[deref_mut]
     server: T,
-    pub(crate) connections: Slab<Id<S>, SelectableChannel<S>, N>,
-    write_or_close_events: Vec<Id<S>, N>,
+    pub(crate) connections: Slab<Id<C>, SelectableChannel<ConnectionPipe<S, C>>, N>,
+    write_or_close_events: Vec<Id<C>, N>,
 }
 
-impl<T, S, const N: usize> Selector<T, S, N> {
-    pub fn get(&self, id: &Id<S>) -> &SelectableChannel<S> {
+impl<T, S, C, const N: usize> Selector<T, S, C, N> {
+    pub fn get(&self, id: &Id<C>) -> &SelectableChannel<ConnectionPipe<S, C>> {
         unsafe { self.connections.get_unchecked(id) }
     }
 
-    pub fn get_mut(&mut self, id: &Id<S>) -> &mut SelectableChannel<S> {
+    pub fn get_mut(&mut self, id: &Id<C>) -> &mut SelectableChannel<ConnectionPipe<S, C>> {
         unsafe { self.connections.get_unchecked_mut(id) }
     }
 }
 
-impl<T, S, const N: usize> From<T> for Selector<T, S, N> {
+impl<T, S, C, const N: usize> From<T> for Selector<T, S, C, N> {
     fn from(value: T) -> Self {
         Self {
             server: value,
@@ -32,7 +35,7 @@ impl<T, S, const N: usize> From<T> for Selector<T, S, N> {
     }
 }
 
-impl<T: Default, S, const N: usize> Default for Selector<T, S, N> {
+impl<T: Default, S, C, const N: usize> Default for Selector<T, S, C, N> {
     fn default() -> Self {
         Self {
             server: Default::default(),
@@ -42,7 +45,7 @@ impl<T: Default, S, const N: usize> Default for Selector<T, S, N> {
     }
 }
 
-impl<T, S, const N: usize> Selector<T, S, N> {
+impl<T, S, C, const N: usize> Selector<T, S, C, N> {
     pub fn new(server: T) -> Self {
         Self {
             server,
@@ -52,11 +55,14 @@ impl<T, S, const N: usize> Selector<T, S, N> {
     }
 }
 
-pub trait SelectorListener<T>: Sized {
-    fn tick<const N: usize>(server: &mut Selector<Self, T, N>) -> Result<(), ()>;
-    fn accept<const N: usize>(server: &mut Selector<Self, T, N>, id: Id<T>);
-    fn read<const N: usize>(server: &mut Selector<Self, T, N>, id: Id<T>) -> Result<(), ReadError>;
-    fn close<const N: usize>(server: &mut Selector<Self, T, N>, id: Id<T>);
+pub trait SelectorListener<T, C>: Sized {
+    fn tick<const N: usize>(server: &mut Selector<Self, T, C, N>) -> Result<(), ()>;
+    fn accept<const N: usize>(server: &mut Selector<Self, T, C, N>, id: Id<C>);
+    fn read<const N: usize>(
+        server: &mut Selector<Self, T, C, N>,
+        id: Id<C>,
+    ) -> Result<(), ReadError>;
+    fn close<const N: usize>(server: &mut Selector<Self, T, C, N>, id: Id<C>);
 }
 
 #[derive(derive_more::Deref, derive_more::DerefMut)]
@@ -130,14 +136,16 @@ pub enum SelectorState {
     FlushRequested,
 }
 
-impl<T: SelectorListener<S>, S: Close + Flush + PollRead, const N: usize> Selector<T, S, N> {
-    pub fn request_socket_close(&mut self, id: Id<S>) {
+impl<T: SelectorListener<S, C>, C, S: Close + Flush + PollRead, const N: usize>
+    Selector<T, S, C, N>
+{
+    pub fn request_socket_close(&mut self, id: Id<C>) {
         let socket = self.get_mut(&id);
         socket.state = SelectorState::CloseRequested;
         self.write_or_close_events.push(id).map_err(|_| ()).unwrap();
     }
 
-    pub fn request_socket_flush(&mut self, id: Id<S>) {
+    pub fn request_socket_flush(&mut self, id: Id<C>) {
         let socket = self.get_mut(&id);
         if socket.state == SelectorState::Idle {
             socket.state = SelectorState::FlushRequested;
@@ -145,7 +153,7 @@ impl<T: SelectorListener<S>, S: Close + Flush + PollRead, const N: usize> Select
         }
     }
 
-    pub fn handle_read(&mut self, id: Id<S>, _registry: &mut <S as Close>::Registry) {
+    pub fn handle_read(&mut self, id: Id<C>, _registry: &mut <S as Close>::Registry) {
         let mut f = || -> Result<(), ReadError> {
             let socket = self.get_mut(&id);
             socket.poll_read()?;

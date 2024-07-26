@@ -74,24 +74,29 @@ impl Accept<MockStream> for MockStream {
 }
 
 #[derive(derive_more::Deref, derive_more::DerefMut)]
-pub struct MockSelector<T, S, const N: usize>(Selector<T, S, N>);
+pub struct MockSelector<T, S, C, const N: usize>(Selector<T, S, C, N>);
 
-impl<T: Default, S, const N: usize> Default for MockSelector<T, S, N> {
+impl<T: Default, S, C, const N: usize> Default for MockSelector<T, S, C, N> {
     fn default() -> Self {
         Self(Default::default())
     }
 }
 
-impl<T, S, const N: usize> MockSelector<T, S, N> {
+impl<T, S, C, const N: usize> MockSelector<T, S, C, N> {
     pub fn new(server: T) -> Self {
         Self(Selector::new(server))
     }
 }
 
-impl<T: SelectorListener<S>, const N: usize, S> MockSelector<T, S, N> {
-    pub fn entry_point<T2: SelectorListener<S2>, S2: Close + Flush, const N2: usize>(
+impl<T: SelectorListener<S, C>, C: Default, const N: usize, S> MockSelector<T, S, C, N> {
+    pub fn entry_point<
+        T2: SelectorListener<S2, C2>,
+        S2: Close + Flush,
+        C2: Default,
+        const N2: usize,
+    >(
         mut self,
-        mut server: MockSelector<T2, S2, N2>,
+        mut server: MockSelector<T2, S2, C2, N2>,
     ) where
         S: Close<Registry = <MockStream as Close>::Registry>
             + Flush

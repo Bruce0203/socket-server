@@ -18,8 +18,8 @@ impl<T: Read, const LEN: usize> PollRead for ReadableByteChannel<T, LEN> {
 pub struct ReadableByteChannel<T, const LEN: usize> {
     #[deref]
     #[deref_mut]
-    pub stream: T,
-    pub read_buf: Cursor<u8, LEN>,
+    stream: T,
+    read_buf: Cursor<u8, LEN>,
 }
 
 impl<T, const LEN: usize> From<T> for ReadableByteChannel<T, LEN> {

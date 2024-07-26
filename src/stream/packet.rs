@@ -10,7 +10,7 @@ use super::{Accept, Close, Flush, Open, Read, ReadError, Write};
 pub struct ServerBoundPacketStreamPipe<T, S> {
     #[deref]
     #[deref_mut]
-    pub stream: T,
+     stream: T,
     state: S,
 }
 

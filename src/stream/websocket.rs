@@ -18,7 +18,7 @@ enum WebSocketState {
 pub struct WebSocketServer<T> {
     #[deref]
     #[deref_mut]
-    pub stream: T,
+    stream: T,
     state: WebSocketState,
 }
 

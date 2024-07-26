@@ -8,7 +8,7 @@ use crate::stream::{
 
 #[derive(derive_more::Deref, derive_more::DerefMut)]
 pub struct ConnectionPipe<T, S> {
-    pub stream: T,
+    stream: T,
     #[deref]
     #[deref_mut]
     connection: S,

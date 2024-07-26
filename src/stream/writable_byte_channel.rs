@@ -3,7 +3,7 @@ use fast_collections::Cursor;
 use super::{Accept, Close, Flush, Open, Read, ReadError, Write};
 
 pub struct WritableByteChannel<T, const LEN: usize> {
-    pub stream: T,
+    stream: T,
     pub write_buf: Cursor<u8, LEN>,
 }
 
