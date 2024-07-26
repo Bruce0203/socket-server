@@ -1,9 +1,11 @@
+use fast_collections::Cursor;
+
 use crate::{
     stream::{
         packet::WritePacket,
         readable_byte_channel::{PollRead, ReceivePacket},
     },
-    Accept, Close, Flush, Open, Read, Write,
+    Accept, Close, Flush, Open, Read, ReadError, Write,
 };
 
 #[derive(derive_more::Deref, derive_more::DerefMut)]
@@ -73,13 +75,8 @@ impl<T: Flush, S> Flush for ConnectionPipe<T, S> {
     }
 }
 
-impl<T: Read<T2>, T2, S> Read<T2> for ConnectionPipe<T, S> {
-    type Error = T::Error;
-
-    fn read<const N: usize>(
-        &mut self,
-        read_buf: &mut fast_collections::Cursor<u8, N>,
-    ) -> Result<T2, Self::Error> {
+impl<T: Read, S> Read for ConnectionPipe<T, S> {
+    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<(), ReadError> {
         self.stream.read(read_buf)
     }
 }
@@ -90,8 +87,8 @@ impl<P, T: WritePacket<P>, S> WritePacket<P> for ConnectionPipe<T, S> {
     }
 }
 
-impl<T: PollRead<T2>, T2, S> PollRead<T2> for ConnectionPipe<T, S> {
-    fn poll_read(&mut self) -> Result<T2, Self::Error> {
+impl<T: PollRead, S> PollRead for ConnectionPipe<T, S> {
+    fn poll_read(&mut self) -> Result<(), ReadError> {
         self.stream.poll_read()
     }
 }

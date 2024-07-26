@@ -15,10 +15,8 @@ pub struct MioTcpStream {
     pub is_closed: bool,
 }
 
-impl Read<()> for MioTcpStream {
-    type Error = ReadError;
-
-    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<(), Self::Error> {
+impl Read for MioTcpStream {
+    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<(), ReadError> {
         read_buf
             .push_from_read(&mut self.stream)
             .map_err(|_| ReadError::SocketClosed)?;
@@ -84,11 +82,7 @@ impl<S, T: SelectorListener<SelectableChannel<S>>, const MAX_CONNECTIONS: usize>
     pub fn entry_point(mut self, port: u16, tick_period: Duration) -> !
     where
         SelectableChannel<S>: Accept<MioTcpStream>,
-        S: Close<Registry = mio::Registry>
-            + Flush
-            + Read<()>
-            + PollRead<(), Error = ReadError>
-            + Open,
+        S: Close<Registry = mio::Registry> + Flush + Read + PollRead + Open,
     {
         let mut events = mio::Events::with_capacity(MAX_CONNECTIONS);
         const LISTENER_INDEX: usize = usize::MAX;

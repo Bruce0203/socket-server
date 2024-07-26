@@ -33,15 +33,8 @@ impl<T, S> ServerBoundPacketStreamPipe<T, S> {
     }
 }
 
-impl<T: Read<(), Error = ReadError>, S: ServerBoundPacketStream> Read<()>
-    for ServerBoundPacketStreamPipe<T, S>
-{
-    type Error = ReadError;
-
-    fn read<const N: usize>(
-        &mut self,
-        read_buf: &mut Cursor<u8, N>,
-    ) -> Result<(), <ServerBoundPacketStreamPipe<T, S> as Read<()>>::Error> {
+impl<T: Read, S: ServerBoundPacketStream> Read for ServerBoundPacketStreamPipe<T, S> {
+    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<(), ReadError> {
         self.stream.read(read_buf)
     }
 }
@@ -92,9 +85,8 @@ impl<T, S: ServerBoundPacketStream> ReadPacket<S::BoundPacket>
     }
 }
 
-impl<T: Read<T2, Error = ReadError>, T2, S> Read<T2> for ClientBoundPacketStreamPipe<T, S> {
-    type Error = ReadError;
-    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<T2, Self::Error> {
+impl<T: Read, S> Read for ClientBoundPacketStreamPipe<T, S> {
+    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<(), ReadError> {
         self.stream.read(read_buf)
     }
 }

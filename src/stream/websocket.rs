@@ -31,12 +31,10 @@ impl<T> From<T> for WebSocketServer<T> {
     }
 }
 
-impl<T: Write<Cursor<u8, WRITE_BUF_LEN>> + Read<()>, const WRITE_BUF_LEN: usize> Read<()>
+impl<T: Write<Cursor<u8, WRITE_BUF_LEN>> + Read, const WRITE_BUF_LEN: usize> Read
     for WebSocketServer<WritableByteChannel<T, WRITE_BUF_LEN>>
 {
-    type Error = ReadError;
-
-    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<(), Self::Error> {
+    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<(), ReadError> {
         self.stream
             .read(read_buf)
             .map_err(|_| ReadError::SocketClosed)?;

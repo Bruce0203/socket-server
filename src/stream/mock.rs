@@ -25,10 +25,8 @@ impl MockStream {
     }
 }
 
-impl Read<()> for MockStream {
-    type Error = ReadError;
-
-    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<(), Self::Error> {
+impl Read for MockStream {
+    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<(), ReadError> {
         read_buf
             .push_from_cursor(&mut self.stream_write_buf)
             .map_err(|()| ReadError::SocketClosed)
@@ -103,24 +101,28 @@ impl<T: SelectorListener<SelectableChannel<S>>, const N: usize, S>
         S: Close<Registry = <MockStream as Close>::Registry>
             + Flush
             + Accept<MockStream>
-            + PollRead<(), Error = ReadError>,
+            + PollRead,
         S2: Close<Registry = <MockStream as Close>::Registry>
             + Flush
             + Accept<MockStream>
-            + PollRead<(), Error = ReadError>,
+            + PollRead,
     {
-        let id = unsafe { Id::from(
-            self.connections
-                .add_with_index(|_i| Accept::accept(MockStream::default()))
-                .unwrap(),
-        ) };
+        let id = unsafe {
+            Id::from(
+                self.connections
+                    .add_with_index(|_i| Accept::accept(MockStream::default()))
+                    .unwrap(),
+            )
+        };
         T::accept(&mut self, id.clone());
-        let id2 = unsafe { Id::from(
-            server
-                .connections
-                .add_with_index(|_i| Accept::accept(MockStream::default()))
-                .unwrap(),
-        ) };
+        let id2 = unsafe {
+            Id::from(
+                server
+                    .connections
+                    .add_with_index(|_i| Accept::accept(MockStream::default()))
+                    .unwrap(),
+            )
+        };
         T2::accept(&mut server, id2.clone());
         loop {
             let socket = self.get_mut(&id);

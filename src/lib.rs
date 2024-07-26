@@ -1,7 +1,3 @@
-#![feature(try_blocks)]
-#![feature(specialization)]
-#![feature(generic_arg_infer)]
-
 pub mod connection;
 pub mod selector;
 pub mod stream;

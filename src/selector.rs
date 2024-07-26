@@ -118,10 +118,8 @@ impl<T: Flush> Flush for SelectableChannel<T> {
     }
 }
 
-impl<T: Read<T2>, T2> Read<T2> for SelectableChannel<T> {
-    type Error = T::Error;
-
-    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<T2, Self::Error> {
+impl<T: Read> Read for SelectableChannel<T> {
+    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<(), ReadError> {
         self.stream.read(read_buf)
     }
 }
@@ -135,11 +133,8 @@ pub enum SelectorState {
     FlushRequested,
 }
 
-impl<
-        T: SelectorListener<SelectableChannel<S>>,
-        S: Close + Flush + PollRead<(), Error = ReadError>,
-        const N: usize,
-    > Selector<T, SelectableChannel<S>, N>
+impl<T: SelectorListener<SelectableChannel<S>>, S: Close + Flush + PollRead, const N: usize>
+    Selector<T, SelectableChannel<S>, N>
 {
     pub fn request_socket_close(&mut self, id: Id<SelectableChannel<S>>) {
         let socket = self.get_mut(&id);
@@ -208,8 +203,8 @@ impl<P, T: WritePacket<P>> WritePacket<P> for SelectableChannel<T> {
     }
 }
 
-impl<T: PollRead<T2>, T2> PollRead<T2> for SelectableChannel<T> {
-    fn poll_read(&mut self) -> Result<T2, Self::Error> {
+impl<T: PollRead> PollRead for SelectableChannel<T> {
+    fn poll_read(&mut self) -> Result<(), ReadError> {
         self.stream.poll_read()
     }
 }

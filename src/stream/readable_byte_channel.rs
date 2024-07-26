@@ -4,12 +4,12 @@ use crate::{Accept, Close, Flush, Open, Read, ReadError, Write};
 
 use super::packet::{ReadPacket, WritePacket};
 
-pub trait PollRead<T>: Read<T> {
-    fn poll_read(&mut self) -> Result<T, Self::Error>;
+pub trait PollRead: Read {
+    fn poll_read(&mut self) -> Result<(), ReadError>;
 }
 
-impl<T: Read<T2>, T2, const LEN: usize> PollRead<T2> for ReadableByteChannel<T, LEN> {
-    fn poll_read(&mut self) -> Result<T2, Self::Error> {
+impl<T: Read, const LEN: usize> PollRead for ReadableByteChannel<T, LEN> {
+    fn poll_read(&mut self) -> Result<(), ReadError> {
         self.stream.read(&mut self.read_buf)
     }
 }
@@ -44,10 +44,8 @@ impl<T: Accept<A>, const LEN: usize, A> Accept<A> for ReadableByteChannel<T, LEN
     }
 }
 
-impl<T: Read<T2>, T2, const LEN: usize> Read<T2> for ReadableByteChannel<T, LEN> {
-    type Error = T::Error;
-
-    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<T2, Self::Error> {
+impl<T: Read, const LEN: usize> Read for ReadableByteChannel<T, LEN> {
+    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<(), ReadError> {
         self.stream.read(read_buf)
     }
 }

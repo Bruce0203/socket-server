@@ -1,6 +1,6 @@
 use fast_collections::Cursor;
 
-use crate::{Accept, Close, Flush, Open, Read, Write};
+use crate::{Accept, Close, Flush, Open, Read, ReadError, Write};
 
 pub struct WritableByteChannel<T, const LEN: usize> {
     pub stream: T,
@@ -29,10 +29,8 @@ impl<T: Accept<A>, A, const LEN: usize> Accept<A> for WritableByteChannel<T, LEN
     }
 }
 
-impl<T: Read<T2>, T2, const LEN: usize> Read<T2> for WritableByteChannel<T, LEN> {
-    type Error = T::Error;
-
-    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<T2, Self::Error> {
+impl<T: Read, const LEN: usize> Read for WritableByteChannel<T, LEN> {
+    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<(), ReadError> {
         self.stream.read(read_buf)
     }
 }
