@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use super::{Accept, Close, Flush, Id, Open, Read, ReadError, Write};
 use crate::{
-    prelude::ConnectionPipe,
+    connection::ConnectionPipe,
     selector::{SelectableChannel, Selector, SelectorListener},
     tick_machine::TickMachine,
 };

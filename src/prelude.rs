@@ -5,7 +5,6 @@ use crate::stream::{
     writable_byte_channel::WritableByteChannel,
 };
 
-pub use super::connection::ConnectionPipe;
 pub use super::selector::{Selector, SelectorListener};
 pub use super::stream::mock::MockSelector;
 pub use super::stream::packet::WritePacket;

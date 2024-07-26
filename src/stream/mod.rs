@@ -101,7 +101,7 @@ impl<T> Into<NonMaxUsize> for &Id<T> {
 }
 
 impl<T> Id<T> {
-    pub unsafe fn from(value: usize) -> Self {
+    pub const unsafe fn from(value: usize) -> Self {
         Self {
             inner: unsafe { NonMaxUsize::new_unchecked(value) },
             _marker: PhantomData,

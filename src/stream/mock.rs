@@ -7,6 +7,7 @@ use super::readable_byte_channel::PollRead;
 
 #[derive(Default)]
 pub struct MockStream {
+    //TODO generify length of buffers
     pub stream_read_buf: Cursor<u8, 1000>,
     pub stream_write_buf: Cursor<u8, 1000>,
     pub is_cosed: bool,

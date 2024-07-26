@@ -10,7 +10,7 @@ use super::{Accept, Close, Flush, Open, Read, ReadError, Write};
 pub struct ServerBoundPacketStreamPipe<T, S> {
     #[deref]
     #[deref_mut]
-     stream: T,
+    stream: T,
     state: S,
 }
 
@@ -86,16 +86,6 @@ impl<T, S: ServerBoundPacketStream> ReadPacket<S::BoundPacket>
 
 pub trait WritePacket<T> {
     fn send(&mut self, packet: T) -> Result<(), ReadError>;
-}
-
-impl<T, S: ClientBoundPacketStream, const LEN: usize>
-    ServerBoundPacketStreamPipe<WritableByteChannel<T, LEN>, S>
-{
-    pub fn write(&mut self, packet: S::BoundPacket) -> Result<(), ReadError> {
-        self.state
-            .encode_client_bound_packet(&packet, &mut self.stream.write_buf)
-            .map_err(|()| ReadError::SocketClosed)
-    }
 }
 
 impl<T, S: ClientBoundPacketStream, const LEN: usize> WritePacket<S::BoundPacket>

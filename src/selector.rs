@@ -2,7 +2,7 @@ use fast_collections::{Clear, Cursor, GetUnchecked, Push, Slab, Vec};
 
 use super::stream::{Accept, Close, Flush, Id, Open, Read, ReadError, Write};
 use crate::{
-    prelude::ConnectionPipe,
+    connection::ConnectionPipe,
     stream::{packet::WritePacket, readable_byte_channel::PollRead},
 };
 
