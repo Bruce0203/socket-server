@@ -1,6 +1,6 @@
 use fast_collections::Cursor;
 
-use crate::{Accept, Close, Flush, Open, Read, ReadError, Write};
+use super::{Accept, Close, Flush, Open, Read, ReadError, Write};
 
 use super::packet::{ReadPacket, WritePacket};
 
@@ -82,13 +82,13 @@ impl<T: Open, const LEN: usize> Open for ReadableByteChannel<T, LEN> {
 
     type Registry = T::Registry;
 
-    fn open(&mut self, registry: &mut mio::Registry) -> Result<(), Self::Error> {
+    fn open(&mut self, registry: &mut Self::Registry) -> Result<(), Self::Error> {
         self.stream.open(registry)
     }
 }
 
 impl<P, T: WritePacket<P>, const LEN: usize> WritePacket<P> for ReadableByteChannel<T, LEN> {
-    fn send(&mut self, packet: P) -> Result<(), crate::ReadError> {
+    fn send(&mut self, packet: P) -> Result<(), ReadError> {
         self.stream.send(packet)
     }
 }

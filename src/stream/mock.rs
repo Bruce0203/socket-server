@@ -1,9 +1,7 @@
 use fast_collections::{AddWithIndex, Cursor};
 
-use crate::{
-    selector::{SelectableChannel, Selector, SelectorListener},
-    Accept, Close, Flush, Id, Read, ReadError, Write,
-};
+use super::{Accept, Close, Flush, Id, Read, ReadError, Write};
+use crate::selector::{Selector, SelectorListener};
 
 use super::readable_byte_channel::PollRead;
 
@@ -90,16 +88,10 @@ impl<T, S, const N: usize> MockSelector<T, S, N> {
     }
 }
 
-impl<T: SelectorListener<SelectableChannel<S>>, const N: usize, S>
-    MockSelector<T, SelectableChannel<S>, N>
-{
-    pub fn entry_point<
-        T2: SelectorListener<SelectableChannel<S2>>,
-        S2: Close + Flush,
-        const N2: usize,
-    >(
+impl<T: SelectorListener<S>, const N: usize, S> MockSelector<T, S, N> {
+    pub fn entry_point<T2: SelectorListener<S2>, S2: Close + Flush, const N2: usize>(
         mut self,
-        mut server: MockSelector<T2, SelectableChannel<S2>, N2>,
+        mut server: MockSelector<T2, S2, N2>,
     ) where
         S: Close<Registry = <MockStream as Close>::Registry>
             + Flush

@@ -1,9 +1,9 @@
 use std::time::Duration;
 
+use super::{Accept, Close, Flush, Id, Open, Read, ReadError, Write};
 use crate::{
     selector::{SelectableChannel, Selector, SelectorListener},
     tick_machine::TickMachine,
-    Accept, Close, Flush, Id, Open, Read, ReadError, Write,
 };
 use fast_collections::{AddWithIndex, Cursor};
 
@@ -76,13 +76,11 @@ impl Open for MioTcpStream {
     }
 }
 
-impl<S, T: SelectorListener<SelectableChannel<S>>, const MAX_CONNECTIONS: usize>
-    Selector<T, SelectableChannel<S>, MAX_CONNECTIONS>
-{
+impl<S, T: SelectorListener<S>, const MAX_CONNECTIONS: usize> Selector<T, S, MAX_CONNECTIONS> {
     pub fn entry_point(mut self, port: u16, tick_period: Duration) -> !
     where
         SelectableChannel<S>: Accept<MioTcpStream>,
-        S: Close<Registry = mio::Registry> + Flush + Read + PollRead + Open,
+        S: Close<Registry = mio::Registry> + Flush + PollRead + Open<Registry = mio::Registry>,
     {
         let mut events = mio::Events::with_capacity(MAX_CONNECTIONS);
         const LISTENER_INDEX: usize = usize::MAX;
@@ -106,7 +104,7 @@ impl<S, T: SelectorListener<SelectableChannel<S>>, const MAX_CONNECTIONS: usize>
                     if let Ok(socket_id) = self.connections.add_with_index(|index| {
                         let stream: mio::net::TcpStream = listener.accept().unwrap().0.into();
                         let token = mio::Token(*index);
-                        SelectableChannel::accept(MioTcpStream {
+                        Accept::accept(MioTcpStream {
                             stream,
                             token,
                             is_closed: false,

@@ -2,7 +2,7 @@ use fast_collections::{Clear, Cursor, CursorReadTransmute, GetUnchecked, Push, P
 use httparse::{Request, EMPTY_HEADER};
 use sha1::{Digest, Sha1};
 
-use crate::{Accept, Close, Flush, Open, Read, ReadError, Write};
+use super::{Accept, Close, Flush, Open, Read, ReadError, Write};
 
 use super::writable_byte_channel::WritableByteChannel;
 
@@ -195,7 +195,7 @@ impl<T: Open> Open for WebSocketServer<T> {
 
     type Registry = T::Registry;
 
-    fn open(&mut self, registry: &mut mio::Registry) -> Result<(), Self::Error> {
+    fn open(&mut self, registry: &mut Self::Registry) -> Result<(), Self::Error> {
         self.stream.open(registry)
     }
 }

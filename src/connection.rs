@@ -1,11 +1,9 @@
 use fast_collections::Cursor;
 
-use crate::{
-    stream::{
-        packet::WritePacket,
-        readable_byte_channel::{PollRead, ReceivePacket},
-    },
-    Accept, Close, Flush, Open, Read, ReadError, Write,
+use super::stream::{Accept, Close, Flush, Open, Read, ReadError, Write};
+use crate::stream::{
+    packet::WritePacket,
+    readable_byte_channel::{PollRead, ReceivePacket},
 };
 
 #[derive(derive_more::Deref, derive_more::DerefMut)]
@@ -42,7 +40,7 @@ impl<T: Open, S> Open for ConnectionPipe<T, S> {
 
     type Registry = T::Registry;
 
-    fn open(&mut self, registry: &mut mio::Registry) -> Result<(), Self::Error> {
+    fn open(&mut self, registry: &mut Self::Registry) -> Result<(), Self::Error> {
         self.stream.open(registry)
     }
 }
@@ -82,7 +80,7 @@ impl<T: Read, S> Read for ConnectionPipe<T, S> {
 }
 
 impl<P, T: WritePacket<P>, S> WritePacket<P> for ConnectionPipe<T, S> {
-    fn send(&mut self, packet: P) -> Result<(), crate::ReadError> {
+    fn send(&mut self, packet: P) -> Result<(), ReadError> {
         self.stream.send(packet)
     }
 }
@@ -94,7 +92,7 @@ impl<T: PollRead, S> PollRead for ConnectionPipe<T, S> {
 }
 
 impl<T: ReceivePacket<P>, S, P> ReceivePacket<P> for ConnectionPipe<T, S> {
-    fn recv(&mut self) -> Result<P, crate::ReadError> {
+    fn recv(&mut self) -> Result<P, ReadError> {
         self.stream.recv()
     }
 }

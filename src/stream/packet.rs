@@ -3,9 +3,8 @@ use std::ops::DerefMut;
 use fast_collections::Cursor;
 use packetize::{ClientBoundPacketStream, ServerBoundPacketStream};
 
-use crate::{Accept, Close, Flush, Open, Read, ReadError, Write};
-
 use super::writable_byte_channel::WritableByteChannel;
+use super::{Accept, Close, Flush, Open, Read, ReadError, Write};
 
 #[derive(derive_more::Deref, derive_more::DerefMut)]
 pub struct ServerBoundPacketStreamPipe<T, S> {
@@ -82,42 +81,6 @@ impl<T, S: ServerBoundPacketStream> ReadPacket<S::BoundPacket>
             .state
             .decode_server_bound_packet(read_buf)
             .map_err(|()| ReadError::NotFullRead)?)
-    }
-}
-
-impl<T: Read, S> Read for ClientBoundPacketStreamPipe<T, S> {
-    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<(), ReadError> {
-        self.stream.read(read_buf)
-    }
-}
-
-impl<T: Write, S> Write for ClientBoundPacketStreamPipe<T, S> {
-    fn write<const LEN: usize>(
-        &mut self,
-        write_buf: &mut Cursor<u8, LEN>,
-    ) -> Result<(), Self::Error> {
-        self.stream.write(write_buf)
-    }
-}
-
-impl<T: Flush, S> Flush for ClientBoundPacketStreamPipe<T, S> {
-    type Error = T::Error;
-
-    fn flush(&mut self) -> Result<(), Self::Error> {
-        self.stream.flush()
-    }
-}
-
-impl<T: Write, S> Write for ServerBoundPacketStreamPipe<T, S> {
-    fn write<const N: usize>(&mut self, write_buf: &mut Cursor<u8, N>) -> Result<(), Self::Error> {
-        self.stream.write(write_buf)
-    }
-}
-
-impl<T: Flush, S> Flush for ServerBoundPacketStreamPipe<T, S> {
-    type Error = T::Error;
-    fn flush(&mut self) -> Result<(), Self::Error> {
-        self.stream.flush()
     }
 }
 
@@ -242,7 +205,7 @@ impl<T: Open, S> Open for ClientBoundPacketStreamPipe<T, S> {
 
     type Registry = T::Registry;
 
-    fn open(&mut self, registry: &mut mio::Registry) -> Result<(), Self::Error> {
+    fn open(&mut self, registry: &mut Self::Registry) -> Result<(), Self::Error> {
         self.stream.open(registry)
     }
 }
@@ -252,7 +215,43 @@ impl<T: Open, S> Open for ServerBoundPacketStreamPipe<T, S> {
 
     type Registry = T::Registry;
 
-    fn open(&mut self, registry: &mut mio::Registry) -> Result<(), Self::Error> {
+    fn open(&mut self, registry: &mut Self::Registry) -> Result<(), Self::Error> {
         self.stream.open(registry)
+    }
+}
+
+impl<T: Read, S> Read for ClientBoundPacketStreamPipe<T, S> {
+    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<(), ReadError> {
+        self.stream.read(read_buf)
+    }
+}
+
+impl<T: Write, S> Write for ClientBoundPacketStreamPipe<T, S> {
+    fn write<const LEN: usize>(
+        &mut self,
+        write_buf: &mut Cursor<u8, LEN>,
+    ) -> Result<(), Self::Error> {
+        self.stream.write(write_buf)
+    }
+}
+
+impl<T: Flush, S> Flush for ClientBoundPacketStreamPipe<T, S> {
+    type Error = T::Error;
+
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        self.stream.flush()
+    }
+}
+
+impl<T: Write, S> Write for ServerBoundPacketStreamPipe<T, S> {
+    fn write<const N: usize>(&mut self, write_buf: &mut Cursor<u8, N>) -> Result<(), Self::Error> {
+        self.stream.write(write_buf)
+    }
+}
+
+impl<T: Flush, S> Flush for ServerBoundPacketStreamPipe<T, S> {
+    type Error = T::Error;
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        self.stream.flush()
     }
 }

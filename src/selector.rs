@@ -1,25 +1,23 @@
 use fast_collections::{Clear, Cursor, GetUnchecked, Push, Slab, Vec};
 
-use crate::{
-    stream::{packet::WritePacket, readable_byte_channel::PollRead},
-    Accept, Close, Flush, Id, Open, Read, ReadError, Write,
-};
+use super::stream::{Accept, Close, Flush, Id, Open, Read, ReadError, Write};
+use crate::stream::{packet::WritePacket, readable_byte_channel::PollRead};
 
 #[derive(derive_more::Deref, derive_more::DerefMut)]
 pub struct Selector<T, S, const N: usize> {
     #[deref]
     #[deref_mut]
     server: T,
-    pub(crate) connections: Slab<Id<SelectableChannel<S>>, SelectableChannel<S>, N>,
-    write_or_close_events: Vec<Id<SelectableChannel<S>>, N>,
+    pub(crate) connections: Slab<Id<S>, SelectableChannel<S>, N>,
+    write_or_close_events: Vec<Id<S>, N>,
 }
 
 impl<T, S, const N: usize> Selector<T, S, N> {
-    pub fn get(&self, id: &Id<SelectableChannel<S>>) -> &SelectableChannel<S> {
+    pub fn get(&self, id: &Id<S>) -> &SelectableChannel<S> {
         unsafe { self.connections.get_unchecked(id) }
     }
 
-    pub fn get_mut(&mut self, id: &Id<SelectableChannel<S>>) -> &mut SelectableChannel<S> {
+    pub fn get_mut(&mut self, id: &Id<S>) -> &mut SelectableChannel<S> {
         unsafe { self.connections.get_unchecked_mut(id) }
     }
 }
@@ -84,9 +82,9 @@ impl<T: Accept<A>, A> Accept<A> for SelectableChannel<T> {
 
 impl<T: Open> Open for SelectableChannel<T> {
     type Error = T::Error;
-    type Registry = T::Error;
+    type Registry = T::Registry;
 
-    fn open(&mut self, registry: &mut mio::Registry) -> Result<(), Self::Error> {
+    fn open(&mut self, registry: &mut Self::Registry) -> Result<(), Self::Error> {
         self.stream.open(registry)
     }
 }
@@ -128,21 +126,18 @@ impl<T: Read> Read for SelectableChannel<T> {
 pub enum SelectorState {
     #[default]
     Idle,
-    Closed,
     CloseRequested,
     FlushRequested,
 }
 
-impl<T: SelectorListener<SelectableChannel<S>>, S: Close + Flush + PollRead, const N: usize>
-    Selector<T, SelectableChannel<S>, N>
-{
-    pub fn request_socket_close(&mut self, id: Id<SelectableChannel<S>>) {
+impl<T: SelectorListener<S>, S: Close + Flush + PollRead, const N: usize> Selector<T, S, N> {
+    pub fn request_socket_close(&mut self, id: Id<S>) {
         let socket = self.get_mut(&id);
         socket.state = SelectorState::CloseRequested;
         self.write_or_close_events.push(id).map_err(|_| ()).unwrap();
     }
 
-    pub fn request_socket_flush(&mut self, id: Id<SelectableChannel<S>>) {
+    pub fn request_socket_flush(&mut self, id: Id<S>) {
         let socket = self.get_mut(&id);
         if socket.state == SelectorState::Idle {
             socket.state = SelectorState::FlushRequested;
@@ -150,11 +145,7 @@ impl<T: SelectorListener<SelectableChannel<S>>, S: Close + Flush + PollRead, con
         }
     }
 
-    pub fn handle_read(
-        &mut self,
-        id: Id<SelectableChannel<S>>,
-        _registry: &mut <S as Close>::Registry,
-    ) {
+    pub fn handle_read(&mut self, id: Id<S>, _registry: &mut <S as Close>::Registry) {
         let mut f = || -> Result<(), ReadError> {
             let socket = self.get_mut(&id);
             socket.poll_read()?;
@@ -179,7 +170,7 @@ impl<T: SelectorListener<SelectableChannel<S>>, S: Close + Flush + PollRead, con
             let socket = unsafe { self.connections.get_unchecked_mut(&socket_id) };
             index += 1;
             match socket.state {
-                SelectorState::Idle | SelectorState::Closed => continue,
+                SelectorState::Idle => continue,
                 SelectorState::CloseRequested => {
                     T::close(self, socket_id.clone());
                     let socket = self.get_mut(&socket_id);
