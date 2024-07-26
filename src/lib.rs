@@ -13,9 +13,8 @@ use fast_collections::Cursor;
 use mio::Registry;
 use nonmax::NonMaxUsize;
 
-pub trait Read<T> {
-    type Error;
-    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<T, Self::Error>;
+pub trait Read {
+    fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<(), ReadError>;
 }
 
 #[derive(Debug)]
