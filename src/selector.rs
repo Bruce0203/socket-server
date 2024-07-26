@@ -10,16 +10,16 @@ pub struct Selector<T, S, const N: usize> {
     #[deref]
     #[deref_mut]
     server: T,
-    pub(crate) connections: Slab<Id<S>, S, N>,
-    write_or_close_events: Vec<Id<S>, N>,
+    pub(crate) connections: Slab<Id<SelectableChannel<S>>, SelectableChannel<S>, N>,
+    write_or_close_events: Vec<Id<SelectableChannel<S>>, N>,
 }
 
 impl<T, S, const N: usize> Selector<T, S, N> {
-    pub fn get(&self, id: &Id<S>) -> &S {
+    pub fn get(&self, id: &Id<SelectableChannel<S>>) -> &SelectableChannel<S> {
         unsafe { self.connections.get_unchecked(id) }
     }
 
-    pub fn get_mut(&mut self, id: &Id<S>) -> &mut S {
+    pub fn get_mut(&mut self, id: &Id<SelectableChannel<S>>) -> &mut SelectableChannel<S> {
         unsafe { self.connections.get_unchecked_mut(id) }
     }
 }
@@ -105,8 +105,8 @@ impl<T: Close> Close for SelectableChannel<T> {
     }
 }
 
-impl<T: Write<T2>, T2> Write<T2> for SelectableChannel<T> {
-    fn write(&mut self, write: &mut T2) -> Result<(), Self::Error> {
+impl<T: Write> Write for SelectableChannel<T> {
+    fn write<const N: usize>(&mut self, write: &mut Cursor<u8, N>) -> Result<(), Self::Error> {
         self.stream.write(write)
     }
 }

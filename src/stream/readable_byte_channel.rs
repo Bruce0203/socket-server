@@ -50,8 +50,8 @@ impl<T: Read, const LEN: usize> Read for ReadableByteChannel<T, LEN> {
     }
 }
 
-impl<T: Write<T2>, T2, const LEN: usize> Write<T2> for ReadableByteChannel<T, LEN> {
-    fn write(&mut self, write_buf: &mut T2) -> Result<(), Self::Error> {
+impl<T: Write, const LEN: usize> Write for ReadableByteChannel<T, LEN> {
+    fn write<const N: usize>(&mut self, write_buf: &mut Cursor<u8, N>) -> Result<(), Self::Error> {
         self.stream.write(write_buf)
     }
 }

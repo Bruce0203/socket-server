@@ -35,15 +35,13 @@ impl<T: Read, const LEN: usize> Read for WritableByteChannel<T, LEN> {
     }
 }
 
-impl<T: Write<Cursor<u8, LEN>>, const LEN: usize> Write<Cursor<u8, LEN>>
-    for WritableByteChannel<T, LEN>
-{
-    fn write(&mut self, write_buf: &mut Cursor<u8, LEN>) -> Result<(), Self::Error> {
+impl<T: Write, const LEN: usize> Write for WritableByteChannel<T, LEN> {
+    fn write<const N: usize>(&mut self, write_buf: &mut Cursor<u8, N>) -> Result<(), Self::Error> {
         self.stream.write(write_buf)
     }
 }
 
-impl<T: Flush + Write<Cursor<u8, LEN>>, const LEN: usize> Flush for WritableByteChannel<T, LEN> {
+impl<T: Flush + Write, const LEN: usize> Flush for WritableByteChannel<T, LEN> {
     type Error = <T as Flush>::Error;
     fn flush(&mut self) -> Result<(), Self::Error> {
         self.stream.write(&mut self.write_buf)?;

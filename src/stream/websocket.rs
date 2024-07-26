@@ -31,7 +31,7 @@ impl<T> From<T> for WebSocketServer<T> {
     }
 }
 
-impl<T: Write<Cursor<u8, WRITE_BUF_LEN>> + Read, const WRITE_BUF_LEN: usize> Read
+impl<T: Write + Read, const WRITE_BUF_LEN: usize> Read
     for WebSocketServer<WritableByteChannel<T, WRITE_BUF_LEN>>
 {
     fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<(), ReadError> {
@@ -113,24 +113,21 @@ impl<T: Write<Cursor<u8, WRITE_BUF_LEN>> + Read, const WRITE_BUF_LEN: usize> Rea
                         mask_i %= MASK_KEY_LEN;
                     }
                 }
-                //self.server.poll_read(socket_id, registry);
                 Ok(())
             }
         }
     }
 }
 
-impl<T: Write<Cursor<u8, WRITE_BUF_LEN>>, const WRITE_BUF_LEN: usize>
-    Write<Cursor<u8, WRITE_BUF_LEN>> for WebSocketServer<WritableByteChannel<T, WRITE_BUF_LEN>>
+impl<T: Write, const WRITE_BUF_LEN: usize> Write
+    for WebSocketServer<WritableByteChannel<T, WRITE_BUF_LEN>>
 {
-    fn write(&mut self, write_buf: &mut Cursor<u8, WRITE_BUF_LEN>) -> Result<(), Self::Error> {
+    fn write<const N: usize>(&mut self, write_buf: &mut Cursor<u8, N>) -> Result<(), Self::Error> {
         self.stream.write(write_buf).map_err(|_| ())
     }
 }
 
-impl<T: Flush + Write<Cursor<u8, LEN>>, const LEN: usize> Flush
-    for WebSocketServer<WritableByteChannel<T, LEN>>
-{
+impl<T: Flush + Write, const LEN: usize> Flush for WebSocketServer<WritableByteChannel<T, LEN>> {
     type Error = ();
 
     fn flush(&mut self) -> Result<(), Self::Error> {

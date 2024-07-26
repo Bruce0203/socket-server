@@ -61,8 +61,8 @@ impl<T: Close, S> Close for ConnectionPipe<T, S> {
     }
 }
 
-impl<T: Write<T2>, S, T2> Write<T2> for ConnectionPipe<T, S> {
-    fn write(&mut self, write: &mut T2) -> Result<(), Self::Error> {
+impl<T: Write, S> Write for ConnectionPipe<T, S> {
+    fn write<const N: usize>(&mut self, write: &mut Cursor<u8, N>) -> Result<(), Self::Error> {
         self.stream.write(write)
     }
 }

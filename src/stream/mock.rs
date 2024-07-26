@@ -33,8 +33,11 @@ impl Read for MockStream {
     }
 }
 
-impl<const LEN: usize> Write<Cursor<u8, LEN>> for MockStream {
-    fn write(&mut self, write_buf: &mut Cursor<u8, LEN>) -> Result<(), Self::Error> {
+impl Write for MockStream {
+    fn write<const LEN: usize>(
+        &mut self,
+        write_buf: &mut Cursor<u8, LEN>,
+    ) -> Result<(), Self::Error> {
         self.stream_read_buf.push_from_cursor(write_buf)
     }
 }

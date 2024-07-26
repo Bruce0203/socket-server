@@ -20,8 +20,8 @@ pub enum ReadError {
     SocketClosed,
 }
 
-pub trait Write<T>: Flush {
-    fn write(&mut self, write: &mut T) -> Result<(), Self::Error>;
+pub trait Write: Flush {
+    fn write<const N: usize>(&mut self, write: &mut Cursor<u8, N>) -> Result<(), Self::Error>;
 }
 
 pub trait Flush {
@@ -53,6 +53,12 @@ pub struct Id<T> {
     _marker: PhantomData<T>,
 }
 
+const _: () = {
+    if size_of::<Id<()>>() != size_of::<usize>() {
+        panic!("size of id is not same as usize")
+    }
+};
+
 impl<T> Copy for Id<T> {}
 
 impl<T> Debug for Id<T> {
@@ -60,12 +66,6 @@ impl<T> Debug for Id<T> {
         f.debug_struct("Id").field("id", &self.inner).finish()
     }
 }
-
-const _: () = {
-    if size_of::<Id<()>>() != size_of::<usize>() {
-        panic!("size of id is not same as usize")
-    }
-};
 
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {

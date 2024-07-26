@@ -91,10 +91,11 @@ impl<T: Read, S> Read for ClientBoundPacketStreamPipe<T, S> {
     }
 }
 
-impl<T: Write<Cursor<u8, LEN>>, const LEN: usize, S> Write<Cursor<u8, LEN>>
-    for ClientBoundPacketStreamPipe<T, S>
-{
-    fn write(&mut self, write_buf: &mut Cursor<u8, LEN>) -> Result<(), Self::Error> {
+impl<T: Write, S> Write for ClientBoundPacketStreamPipe<T, S> {
+    fn write<const LEN: usize>(
+        &mut self,
+        write_buf: &mut Cursor<u8, LEN>,
+    ) -> Result<(), Self::Error> {
         self.stream.write(write_buf)
     }
 }
@@ -107,8 +108,8 @@ impl<T: Flush, S> Flush for ClientBoundPacketStreamPipe<T, S> {
     }
 }
 
-impl<T: Write<T2>, T2, S> Write<T2> for ServerBoundPacketStreamPipe<T, S> {
-    fn write(&mut self, write_buf: &mut T2) -> Result<(), Self::Error> {
+impl<T: Write, S> Write for ServerBoundPacketStreamPipe<T, S> {
+    fn write<const N: usize>(&mut self, write_buf: &mut Cursor<u8, N>) -> Result<(), Self::Error> {
         self.stream.write(write_buf)
     }
 }

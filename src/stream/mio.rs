@@ -34,8 +34,8 @@ impl Accept<MioTcpStream> for MioTcpStream {
     }
 }
 
-impl<const N: usize> Write<Cursor<u8, N>> for MioTcpStream {
-    fn write(&mut self, write_buf: &mut Cursor<u8, N>) -> Result<(), Self::Error> {
+impl Write for MioTcpStream {
+    fn write<const N: usize>(&mut self, write_buf: &mut Cursor<u8, N>) -> Result<(), Self::Error> {
         write_buf.push_to_write(&mut self.stream)
     }
 }
