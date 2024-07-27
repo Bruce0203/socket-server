@@ -70,12 +70,14 @@ pub struct SelectableChannel<T> {
     #[deref]
     #[deref_mut]
     pub stream: T,
+    read_failure_accumulator: u8,
     state: SelectorState,
 }
 
 impl<T: Accept<A>, A> Accept<A> for SelectableChannel<T> {
     fn accept(accept: A) -> Self {
         Self {
+            read_failure_accumulator: 0,
             stream: T::accept(accept),
             state: SelectorState::default(),
         }
@@ -161,9 +163,19 @@ impl<T: SelectorListener<S, C>, C, S: Close + Flush + PollRead, const N: usize>
             Ok(())
         };
         match f() {
-            Ok(()) => {}
+            Ok(()) => {
+                let socket = self.get_mut(&id);
+                socket.read_failure_accumulator = 0;
+            }
             Err(err) => match err {
-                ReadError::NotFullRead => { /*TODO acc rate limit*/ }
+                ReadError::NotFullRead => {
+                    let socket = self.get_mut(&id);
+                    socket.read_failure_accumulator += 1;
+                    if socket.read_failure_accumulator == u8::MAX {
+                        socket.read_failure_accumulator = 0;
+                        self.request_socket_close(id.clone());
+                    }
+                }
                 ReadError::SocketClosed => self.request_socket_close(id.clone()),
                 ReadError::FlushRequest => self.request_socket_flush(id.clone()),
             },
