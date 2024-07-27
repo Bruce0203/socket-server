@@ -75,29 +75,24 @@ impl Accept<MockStream> for MockStream {
 }
 
 #[derive(derive_more::Deref, derive_more::DerefMut)]
-pub struct MockSelector<T, S, C, const N: usize>(Selector<T, S, C, N>);
+pub struct MockSelector<T>(T);
 
-impl<T: Default, S, C, const N: usize> Default for MockSelector<T, S, C, N> {
+impl<T: Default> Default for MockSelector<T> {
     fn default() -> Self {
         Self(Default::default())
     }
 }
 
-impl<T, S, C, const N: usize> MockSelector<T, S, C, N> {
+impl<T> MockSelector<T> {
     pub fn new(server: T) -> Self {
-        Self(Selector::new(server))
+        Self(server)
     }
 }
 
-impl<T: SelectorListener<S, C>, C: Default, const N: usize, S> MockSelector<T, S, C, N> {
-    pub fn entry_point<
-        T2: SelectorListener<S2, C2>,
-        S2: Close + Flush,
-        C2: Default,
-        const N2: usize,
-    >(
+impl<T: SelectorListener<S, C>, S, C: Default, const N: usize> MockSelector<Selector<T, S, C, N>> {
+    pub fn entry_point<T2: SelectorListener<S2, C2>, S2, C2: Default, const N2: usize>(
         mut self,
-        mut server: MockSelector<T2, S2, C2, N2>,
+        mut server: MockSelector<Selector<T2, S2, C2, N2>>,
     ) where
         S: Close<Registry = <MockStream as Close>::Registry>
             + Flush
@@ -124,7 +119,7 @@ impl<T: SelectorListener<S, C>, C: Default, const N: usize, S> MockSelector<T, S
                     .unwrap(),
             )
         };
-        T2::accept(&mut server, id2.clone());
+        T2::accept(&mut server.0, id2.clone());
         loop {
             let socket = self.get_mut(&id);
             let socket2 = server.get_mut(&id2);

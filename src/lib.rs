@@ -1,5 +1,5 @@
-mod connection;
+pub mod connection;
 pub mod prelude;
-mod selector;
-mod stream;
+pub mod selector;
+pub mod stream;
 mod tick_machine;

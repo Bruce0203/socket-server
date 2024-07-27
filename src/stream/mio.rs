@@ -80,7 +80,7 @@ impl Open for MioTcpStream {
 impl<S, C, T: SelectorListener<S, C>, const MAX_CONNECTIONS: usize>
     Selector<T, S, C, MAX_CONNECTIONS>
 {
-    pub fn entry_point(mut self, port: u16, tick_period: Duration) -> !
+    pub fn entry_point(&mut self, port: u16, tick_period: Duration) -> !
     where
         SelectableChannel<ConnectionPipe<S, C>>: Accept<MioTcpStream>,
         S: Close<Registry = mio::Registry> + Flush + PollRead + Open<Registry = mio::Registry>,
@@ -101,7 +101,7 @@ impl<S, C, T: SelectorListener<S, C>, const MAX_CONNECTIONS: usize>
         let mut tick_machine = TickMachine::new(tick_period);
         loop {
             poll.poll(&mut events, Some(Duration::ZERO)).unwrap();
-            tick_machine.tick(|| T::tick(&mut self).unwrap());
+            tick_machine.tick(|| T::tick(self).unwrap());
             for event in events.iter() {
                 if event.token().0 == LISTENER_INDEX {
                     if let Ok(socket_id) = self.connections.add_with_index(|index| {
@@ -116,7 +116,7 @@ impl<S, C, T: SelectorListener<S, C>, const MAX_CONNECTIONS: usize>
                         let socket_id = unsafe { Id::from(socket_id) };
                         let socket = self.get_mut(&socket_id);
                         socket.open(&mut registry).map_err(|_| ()).unwrap();
-                        T::accept(&mut self, socket_id)
+                        T::accept(self, socket_id)
                     }
                 } else {
                     let socket_id = event.token();
