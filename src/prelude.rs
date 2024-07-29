@@ -11,15 +11,20 @@ pub use super::stream::packet::WritePacket;
 pub use super::stream::readable_byte_channel::{PollRead, ReceivePacket};
 pub use super::stream::{Accept, Close, Flush, Id, Open, Read, ReadError, Write};
 
-pub type MockTcpStream<const READ_BUF_LEN: usize, const WRITE_BUF_LEN: usize> =
-    ReadableByteChannel<WritableByteChannel<MockStream, WRITE_BUF_LEN>, READ_BUF_LEN>;
+pub type MockTcpStream<const READ_BUF_LEN: usize, const WRITE_BUF_LEN: usize> = ReadableByteChannel<
+    WritableByteChannel<MockStream<WRITE_BUF_LEN, READ_BUF_LEN>, WRITE_BUF_LEN>,
+    READ_BUF_LEN,
+>;
 
 pub type MockTcpClientBoundPacketStream<
     PacketStream,
     const READ_BUF_LEN: usize,
     const WRITE_BUF_LEN: usize,
 > = ReadableByteChannel<
-    ClientBoundPacketStreamPipe<WritableByteChannel<MockStream, WRITE_BUF_LEN>, PacketStream>,
+    ClientBoundPacketStreamPipe<
+        WritableByteChannel<MockStream<WRITE_BUF_LEN, READ_BUF_LEN>, WRITE_BUF_LEN>,
+        PacketStream,
+    >,
     READ_BUF_LEN,
 >;
 
@@ -28,13 +33,18 @@ pub type MockTcpServerBoundPacketStream<
     const READ_BUF_LEN: usize,
     const WRITE_BUF_LEN: usize,
 > = ReadableByteChannel<
-    ServerBoundPacketStreamPipe<WritableByteChannel<MockStream, WRITE_BUF_LEN>, PacketStream>,
+    ServerBoundPacketStreamPipe<
+        WritableByteChannel<MockStream<WRITE_BUF_LEN, READ_BUF_LEN>, WRITE_BUF_LEN>,
+        PacketStream,
+    >,
     READ_BUF_LEN,
 >;
 
 pub type MockTcpWebSocketStream<const READ_BUF_LEN: usize, const WRITE_BUF_LEN: usize> =
     ReadableByteChannel<
-        WebSocketServer<WritableByteChannel<MockStream, WRITE_BUF_LEN>>,
+        WebSocketServer<
+            WritableByteChannel<MockStream<WRITE_BUF_LEN, READ_BUF_LEN>, WRITE_BUF_LEN>,
+        >,
         READ_BUF_LEN,
     >;
 
@@ -44,7 +54,9 @@ pub type MockTcpWebSocketClientBoundPacketStream<
     const WRITE_BUF_LEN: usize,
 > = ReadableByteChannel<
     ClientBoundPacketStreamPipe<
-        WebSocketServer<WritableByteChannel<MockStream, WRITE_BUF_LEN>>,
+        WebSocketServer<
+            WritableByteChannel<MockStream<WRITE_BUF_LEN, READ_BUF_LEN>, WRITE_BUF_LEN>,
+        >,
         PacketStream,
     >,
     READ_BUF_LEN,
@@ -56,7 +68,9 @@ pub type MockTcpWebSocketServerBoundPacketStream<
     const WRITE_BUF_LEN: usize,
 > = ReadableByteChannel<
     ServerBoundPacketStreamPipe<
-        WebSocketServer<WritableByteChannel<MockStream, WRITE_BUF_LEN>>,
+        WebSocketServer<
+            WritableByteChannel<MockStream<WRITE_BUF_LEN, READ_BUF_LEN>, WRITE_BUF_LEN>,
+        >,
         PacketStream,
     >,
     READ_BUF_LEN,

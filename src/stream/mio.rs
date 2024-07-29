@@ -77,7 +77,7 @@ impl Open for MioTcpStream {
     }
 }
 
-impl<S, C, T: SelectorListener<S, C>, const MAX_CONNECTIONS: usize>
+impl<S, C, T: SelectorListener<S, C, MAX_CONNECTIONS>, const MAX_CONNECTIONS: usize>
     Selector<T, S, C, MAX_CONNECTIONS>
 {
     pub fn entry_point(&mut self, port: u16, tick_period: Duration) -> !

@@ -32,8 +32,16 @@ mod test {
     type ClientSocket =
         MockTcpClientBoundPacketStream<ConnectionState, READ_BUF_LEN, WRITE_BUF_LEN>;
 
-    type ServerSelector = MockSelector<Selector<ServerApp, ServerSocket, ServerConnection, 10>>;
-    type ClientSelector = MockSelector<Selector<ClientApp, ClientSocket, ClientConnection, 10>>;
+    type ServerSelector = MockSelector<
+        Selector<ServerApp, ServerSocket, ServerConnection, 10>,
+        WRITE_BUF_LEN,
+        READ_BUF_LEN,
+    >;
+    type ClientSelector = MockSelector<
+        Selector<ClientApp, ClientSocket, ClientConnection, 10>,
+        WRITE_BUF_LEN,
+        READ_BUF_LEN,
+    >;
 
     //FIXME TODO impl test for socket server
     #[ignore]
@@ -50,32 +58,25 @@ mod test {
                 + PollRead
                 + WritePacket<ClientBoundPacket>
                 + ReceivePacket<ServerBoundPacket>,
-        > SelectorListener<T, ServerConnection> for ServerApp
+            const N: usize,
+        > SelectorListener<T, ServerConnection, N> for ServerApp
     {
-        fn tick<const N: usize>(
+        fn tick(server: &mut Selector<Self, T, ServerConnection, N>) -> Result<(), ()> {
+            todo!()
+        }
+
+        fn accept(server: &mut Selector<Self, T, ServerConnection, N>, id: Id<ServerConnection>) {
+            todo!()
+        }
+
+        fn read(
             server: &mut Selector<Self, T, ServerConnection, N>,
-        ) -> Result<(), ()> {
-            todo!()
-        }
-
-        fn accept<const N: usize>(
-            server: &mut Selector<ServerApp, T, ServerConnection, N>,
-            id: Id<ServerConnection>,
-        ) {
-            todo!()
-        }
-
-        fn read<const N: usize>(
-            server: &mut Selector<ServerApp, T, ServerConnection, N>,
             id: Id<ServerConnection>,
         ) -> Result<(), ReadError> {
             todo!()
         }
 
-        fn close<const N: usize>(
-            server: &mut Selector<ServerApp, T, ServerConnection, N>,
-            id: Id<ServerConnection>,
-        ) {
+        fn close(server: &mut Selector<Self, T, ServerConnection, N>, id: Id<ServerConnection>) {
             todo!()
         }
     }

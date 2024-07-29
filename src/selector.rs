@@ -55,14 +55,11 @@ impl<T, S, C, const N: usize> Selector<T, S, C, N> {
     }
 }
 
-pub trait SelectorListener<T, C>: Sized {
-    fn tick<const N: usize>(server: &mut Selector<Self, T, C, N>) -> Result<(), ()>;
-    fn accept<const N: usize>(server: &mut Selector<Self, T, C, N>, id: Id<C>);
-    fn read<const N: usize>(
-        server: &mut Selector<Self, T, C, N>,
-        id: Id<C>,
-    ) -> Result<(), ReadError>;
-    fn close<const N: usize>(server: &mut Selector<Self, T, C, N>, id: Id<C>);
+pub trait SelectorListener<T, C, const N: usize>: Sized {
+    fn tick(server: &mut Selector<Self, T, C, N>) -> Result<(), ()>;
+    fn accept(server: &mut Selector<Self, T, C, N>, id: Id<C>);
+    fn read(server: &mut Selector<Self, T, C, N>, id: Id<C>) -> Result<(), ReadError>;
+    fn close(server: &mut Selector<Self, T, C, N>, id: Id<C>);
 }
 
 #[derive(derive_more::Deref, derive_more::DerefMut)]
@@ -138,7 +135,7 @@ pub enum SelectorState {
     FlushRequested,
 }
 
-impl<T: SelectorListener<S, C>, C, S: Close + Flush + PollRead, const N: usize>
+impl<T: SelectorListener<S, C, N>, C, S: Close + Flush + PollRead, const N: usize>
     Selector<T, S, C, N>
 {
     pub fn request_socket_close(&mut self, id: Id<C>) {

@@ -6,14 +6,15 @@ use crate::selector::{Selector, SelectorListener};
 use super::readable_byte_channel::PollRead;
 
 #[derive(Default)]
-pub struct MockStream {
-    //TODO generify length of buffers
-    pub stream_read_buf: Cursor<u8, 1000>,
-    pub stream_write_buf: Cursor<u8, 1000>,
+pub struct MockStream<const READ_BUF_LEN: usize, const WRITE_BUF_LEN: usize> {
+    pub stream_read_buf: Cursor<u8, READ_BUF_LEN>,
+    pub stream_write_buf: Cursor<u8, WRITE_BUF_LEN>,
     pub is_cosed: bool,
 }
 
-impl MockStream {
+impl<const READ_BUF_LEN: usize, const WRITE_BUF_LEN: usize>
+    MockStream<READ_BUF_LEN, WRITE_BUF_LEN>
+{
     pub fn flex(&mut self, stream: &mut Self) -> Result<(), ()> {
         stream
             .stream_write_buf
@@ -24,7 +25,9 @@ impl MockStream {
     }
 }
 
-impl Read for MockStream {
+impl<const READ_BUF_LEN: usize, const WRITE_BUF_LEN: usize> Read
+    for MockStream<READ_BUF_LEN, WRITE_BUF_LEN>
+{
     fn read<const N: usize>(&mut self, read_buf: &mut Cursor<u8, N>) -> Result<(), ReadError> {
         read_buf
             .push_from_cursor(&mut self.stream_write_buf)
@@ -32,7 +35,9 @@ impl Read for MockStream {
     }
 }
 
-impl Write for MockStream {
+impl<const READ_BUF_LEN: usize, const WRITE_BUF_LEN: usize> Write
+    for MockStream<READ_BUF_LEN, WRITE_BUF_LEN>
+{
     fn write<const LEN: usize>(
         &mut self,
         write_buf: &mut Cursor<u8, LEN>,
@@ -41,7 +46,9 @@ impl Write for MockStream {
     }
 }
 
-impl Flush for MockStream {
+impl<const READ_BUF_LEN: usize, const WRITE_BUF_LEN: usize> Flush
+    for MockStream<READ_BUF_LEN, WRITE_BUF_LEN>
+{
     type Error = ();
 
     fn flush(&mut self) -> Result<(), Self::Error> {
@@ -49,7 +56,9 @@ impl Flush for MockStream {
     }
 }
 
-impl Close for MockStream {
+impl<const READ_BUF_LEN: usize, const WRITE_BUF_LEN: usize> Close
+    for MockStream<READ_BUF_LEN, WRITE_BUF_LEN>
+{
     type Error = ();
 
     type Registry = ();
@@ -64,43 +73,57 @@ impl Close for MockStream {
     }
 }
 
-impl Accept<MockStream> for MockStream {
-    fn accept(accept: MockStream) -> Self {
+impl<const READ_BUF_LEN: usize, const WRITE_BUF_LEN: usize>
+    Accept<MockStream<READ_BUF_LEN, WRITE_BUF_LEN>> for MockStream<READ_BUF_LEN, WRITE_BUF_LEN>
+{
+    fn accept(accept: MockStream<READ_BUF_LEN, WRITE_BUF_LEN>) -> Self {
         accept
     }
 
-    fn get_stream(&mut self) -> &mut MockStream {
+    fn get_stream(&mut self) -> &mut MockStream<READ_BUF_LEN, WRITE_BUF_LEN> {
         self
     }
 }
 
 #[derive(derive_more::Deref, derive_more::DerefMut)]
-pub struct MockSelector<T>(T);
+pub struct MockSelector<T, const READ_BUF_LEN: usize, const WRITE_BUF_LEN: usize>(T);
 
-impl<T: Default> Default for MockSelector<T> {
+impl<T: Default, const READ_BUF_LEN: usize, const WRITE_BUF_LEN: usize> Default
+    for MockSelector<T, READ_BUF_LEN, WRITE_BUF_LEN>
+{
     fn default() -> Self {
         Self(Default::default())
     }
 }
 
-impl<T> MockSelector<T> {
+impl<T, const READ_BUF_LEN: usize, const WRITE_BUF_LEN: usize>
+    MockSelector<T, READ_BUF_LEN, WRITE_BUF_LEN>
+{
     pub fn new(server: T) -> Self {
         Self(server)
     }
 }
 
-impl<T: SelectorListener<S, C>, S, C: Default, const N: usize> MockSelector<Selector<T, S, C, N>> {
-    pub fn entry_point<T2: SelectorListener<S2, C2>, S2, C2: Default, const N2: usize>(
+impl<
+        T: SelectorListener<S, C, N>,
+        S,
+        C: Default,
+        const N: usize,
+        const READ_BUF_LEN: usize,
+        const WRITE_BUF_LEN: usize,
+    > MockSelector<Selector<T, S, C, N>, READ_BUF_LEN, WRITE_BUF_LEN>
+{
+    pub fn entry_point<T2: SelectorListener<S2, C2, N2>, S2, C2: Default, const N2: usize>(
         mut self,
-        mut server: MockSelector<Selector<T2, S2, C2, N2>>,
+        mut server: MockSelector<Selector<T2, S2, C2, N2>, READ_BUF_LEN, WRITE_BUF_LEN>,
     ) where
-        S: Close<Registry = <MockStream as Close>::Registry>
+        S: Close<Registry = <MockStream<READ_BUF_LEN, WRITE_BUF_LEN> as Close>::Registry>
             + Flush
-            + Accept<MockStream>
+            + Accept<MockStream<READ_BUF_LEN, WRITE_BUF_LEN>>
             + PollRead,
-        S2: Close<Registry = <MockStream as Close>::Registry>
+        S2: Close<Registry = <MockStream<READ_BUF_LEN, WRITE_BUF_LEN> as Close>::Registry>
             + Flush
-            + Accept<MockStream>
+            + Accept<MockStream<READ_BUF_LEN, WRITE_BUF_LEN>>
             + PollRead,
     {
         let id = unsafe {
