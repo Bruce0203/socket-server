@@ -1,18 +1,25 @@
+use std::{io::Write, thread::sleep_ms};
+
 use criterion::Criterion;
-use mio::{net::TcpStream, Interest, Poll, Token};
+use mio::{
+    net::{TcpListener, TcpStream},
+    Interest, Poll, Token,
+};
 
 fn benchmark(c: &mut Criterion) {
     let mut poll = Poll::new().unwrap();
     let registry = poll.registry();
-    let mut stream = TcpStream::connect("0.0.0.0:1234".parse().unwrap()).unwrap();
+    let listener = TcpListener::bind("0.0.0.0:0".parse().unwrap()).unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+    println!("{}", addr);
+    let mut stream = TcpStream::connect(addr.parse().unwrap()).unwrap();
+    sleep_ms(100);
     registry
         .register(&mut stream, Token(0), Interest::WRITABLE)
         .unwrap();
     c.bench_function("test", |b| {
         b.iter(|| {
-            registry
-                .reregister(&mut stream, Token(0), Interest::WRITABLE)
-                .unwrap();
+            stream.write(&[]).unwrap();
         });
     });
 }

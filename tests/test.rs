@@ -1,10 +1,19 @@
 #[cfg(test)]
 mod test {
     use packetize::{streaming_packets, Decode, Encode, SimplePacketStreamFormat};
-    use socket_server::prelude::{
-        Close, Flush, Id, MockSelector, MockTcpClientBoundPacketStream,
-        MockTcpServerBoundPacketStream, PollRead, ReadError, ReceivePacket, Selector,
-        SelectorListener, WritePacket,
+    use socket_server::{
+        prelude::{
+            Close, Flush, Id, MockSelector, MockTcpClientBoundPacketStream,
+            MockTcpServerBoundPacketStream, PollRead, ReadError, ReceivePacket, Selector,
+            SelectorListener, WritePacket,
+        },
+        stream::{
+            mock::MockStream,
+            packet::{ClientBoundPacketStreamPipe, ServerBoundPacketStreamPipe},
+            readable_byte_channel::ReadableByteChannel,
+            writable_byte_channel::WritableByteChannel,
+            write_registry::SelectorWriteRegistry,
+        },
     };
 
     #[streaming_packets(SimplePacketStreamFormat)]
@@ -27,13 +36,30 @@ mod test {
 
     const READ_BUF_LEN: usize = 1000;
     const WRITE_BUF_LEN: usize = 1000;
-    type ServerSocket =
-        MockTcpServerBoundPacketStream<ConnectionState, READ_BUF_LEN, WRITE_BUF_LEN>;
-    type ClientSocket =
-        MockTcpClientBoundPacketStream<ConnectionState, READ_BUF_LEN, WRITE_BUF_LEN>;
+    const MAX_CONNECTIONS: usize = 10;
+    type ServerSocket = ReadableByteChannel<
+        ServerBoundPacketStreamPipe<
+            WritableByteChannel<
+                SelectorWriteRegistry<MockStream<WRITE_BUF_LEN, READ_BUF_LEN>, MAX_CONNECTIONS>,
+                WRITE_BUF_LEN,
+            >,
+            ConnectionState,
+        >,
+        READ_BUF_LEN,
+    >;
+    type ClientSocket = ReadableByteChannel<
+        ClientBoundPacketStreamPipe<
+            WritableByteChannel<
+                SelectorWriteRegistry<MockStream<WRITE_BUF_LEN, READ_BUF_LEN>, MAX_CONNECTIONS>,
+                WRITE_BUF_LEN,
+            >,
+            ConnectionState,
+        >,
+        READ_BUF_LEN,
+    >;
 
     type ServerSelector = MockSelector<
-        Selector<ServerApp, ServerSocket, ServerConnection, 10>,
+        Selector<ServerApp, ServerSocket, ServerConnection, MAX_CONNECTIONS>,
         WRITE_BUF_LEN,
         READ_BUF_LEN,
     >;

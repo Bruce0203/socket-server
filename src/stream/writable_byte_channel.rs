@@ -1,6 +1,9 @@
 use fast_collections::Cursor;
 
-use super::{Accept, Close, Flush, Open, Read, ReadError, Write};
+use super::{
+    write_registry::{RegisterWrite, SelectorWriteRegistry},
+    Accept, Close, Flush, Open, Read, ReadError, Write,
+};
 
 pub struct WritableByteChannel<T, const LEN: usize> {
     stream: T,
@@ -70,5 +73,13 @@ impl<T: Open, const LEN: usize> Open for WritableByteChannel<T, LEN> {
 
     fn open(&mut self, registry: &mut Self::Registry) -> Result<(), Self::Error> {
         self.stream.open(registry)
+    }
+}
+
+impl<T: RegisterWrite<P, LEN>, P, const LEN: usize> RegisterWrite<P, LEN>
+    for WritableByteChannel<T, LEN>
+{
+    fn get_selector_registry_mut(&mut self) -> &mut SelectorWriteRegistry<P, LEN> {
+        self.stream.get_selector_registry_mut()
     }
 }

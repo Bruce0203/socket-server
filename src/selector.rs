@@ -6,6 +6,27 @@ use crate::{
     stream::{packet::WritePacket, readable_byte_channel::PollRead},
 };
 
+// 1. mock testing: could be toggled in feature
+// 2. rw buf size: could be custom allocator(maybe not sure)
+// 3. max connection size: could be custom allocator(maybe not sure)
+// 4. socket type(could be stuck in system, so it should be ignored)
+// 5. multithread selector(not related)
+
+// 기존 프로젝트의 문제점
+// 1. 불필요한 제네릭이 수없이 많이 전파되어 코드가 더러워진다
+//   - 해결방법:
+//     * mock 테스팅: feature 로 토글링 가능하다.
+//     * 읽고쓰는 버퍼 크기:  커스텀 할당기로 대체한다.
+//     *  최대 인원 크기:  커스텀 할당기로 대체한다.
+//     * 소켓 타입:  굳이 소켓을 제네릭화할 필요성을 못느낌.
+//
+// 앞으로 추가할 기능
+//
+// 쓰기 이밴트 등록기를 LCell이나 아예 커스텀 포인터를 통해 만든다.
+// 1. create write event registry (with lcell maybe)
+// 2. create socket library with togglable feature that support mock testing
+// 3. create custom allocator
+
 #[derive(derive_more::Deref, derive_more::DerefMut)]
 pub struct Selector<T, S, C, const N: usize> {
     #[deref]

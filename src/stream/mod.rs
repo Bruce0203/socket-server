@@ -3,6 +3,7 @@ use std::{fmt::Debug, marker::PhantomData};
 use fast_collections::Cursor;
 use nonmax::NonMaxUsize;
 
+pub mod write_registry;
 pub mod mio;
 pub mod mock;
 pub mod packet;
