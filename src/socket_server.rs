@@ -215,6 +215,7 @@ where
         const LISTENER_TOKEN: Token = Token(usize::MAX);
         let mut listener = {
             let mut listener = TcpListener::bind(addr).unwrap();
+            listener.set_ttl(64).unwrap();
             selector
                 .mio_registry
                 .register(&mut listener, LISTENER_TOKEN, Interest::READABLE)
