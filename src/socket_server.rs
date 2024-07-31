@@ -135,31 +135,29 @@ where
         owner: &mut LCellOwner<'id>,
         listener: &mut TcpListener,
         registry: &'registry LCell<'id, Registry<T>>,
-    ) {
-        let (mut stream, _addr) = listener.accept().map_err(|_| ()).unwrap();
-        let id = self
-            .sockets
-            .add_with_index(|ind| {
-                mio::Registry::register(
-                    &self.mio_registry,
-                    &mut stream,
-                    Token(*ind),
-                    Interest::READABLE,
-                )
-                .unwrap();
-                Socket::<'_, '_, T> {
-                    stream,
-                    registry,
-                    connection: T::Connection::default(),
-                    state: SocketState::default(),
-                    token: *ind,
-                    read_buf: Cursor::new(),
-                    write_buf: Cursor::new(),
-                }
-            })
+    ) -> Result<(), ()> {
+        let (mut stream, _addr) = listener.accept().map_err(|_| ())?;
+        let id = self.sockets.add_with_index(|ind| {
+            mio::Registry::register(
+                &self.mio_registry,
+                &mut stream,
+                Token(*ind),
+                Interest::READABLE,
+            )
             .unwrap();
+            Socket::<'_, '_, T> {
+                stream,
+                registry,
+                connection: T::Connection::default(),
+                state: SocketState::default(),
+                token: *ind,
+                read_buf: Cursor::new(),
+                write_buf: Cursor::new(),
+            }
+        })?;
         let socket = unsafe { self.sockets.get_unchecked_mut(id) };
         self.server.accept(owner, socket);
+        Ok(())
     }
 
     fn read(&mut self, owner: &mut LCellOwner<'id>, token: usize) {
@@ -234,7 +232,7 @@ where
             for event in events.iter() {
                 let token = event.token();
                 if token == LISTENER_TOKEN {
-                    selector.accept(&mut owner, &mut listener, &registry)
+                    let _result = selector.accept(&mut owner, &mut listener, &registry);
                 } else {
                     selector.read(&mut owner, token.0)
                 }
