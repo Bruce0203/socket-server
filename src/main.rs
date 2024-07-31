@@ -1,8 +1,9 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
-use std::time::Duration;
+use std::{io::Read, time::Duration};
 
+use fast_collections::Cursor;
 use qcell::LCellOwner;
 use socket_server::socket_server::{entry_point, Socket, SocketListener};
 
@@ -12,10 +13,14 @@ fn main() {
         acc: u32,
     }
     #[derive(Default)]
-    struct Connection {}
+    struct Connection {
+        read_buf: Cursor<u8, 100>,
+    }
 
     impl SocketListener for Server {
         const MAX_CONNECTIONS: usize = 5000;
+        const READ_BUFFFER_LEN: usize = 100;
+        const WRITE_BUFFER_LEN: usize = 100;
         const TICK: Duration = Duration::from_millis(50);
         type Connection = Connection;
 
@@ -36,6 +41,8 @@ fn main() {
             owner: &mut LCellOwner<'id>,
             connection: &mut Socket<'id, '_, Self>,
         ) {
+            let stream = &mut connection.stream;
+            Cursor::push_from_read(&mut connection.read_buf, stream);
         }
 
         fn flush<'id>(
