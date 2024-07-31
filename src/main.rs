@@ -41,8 +41,6 @@ fn main() {
             owner: &mut LCellOwner<'id>,
             connection: &mut Socket<'id, '_, Self>,
         ) {
-            let stream = &mut connection.stream;
-            Cursor::push_from_read(&mut connection.read_buf, stream);
         }
 
         fn flush<'id>(
