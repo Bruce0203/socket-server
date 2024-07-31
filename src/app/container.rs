@@ -3,6 +3,25 @@ use std::mem::MaybeUninit;
 use fast_collections::Vec;
 use qcell::{LCell, LCellOwner};
 
+use super::socket_listener::Connection;
+
+#[allow(type_alias_bounds)]
+pub type Repo<'id, T: MaxRepoLen> = Vec<LCell<'id, T>, { <T as MaxRepoLen>::MAX }>;
+#[allow(type_alias_bounds)]
+pub type RefRepo<'id, 'a, T: MaxRepoLen> = Vec<&'a LCell<'id, T>, { <T as MaxRepoLen>::MAX }>;
+
+pub trait MaxRepoLen {
+    const MAX: usize;
+}
+
+impl MaxRepoLen for Player<'_, '_, '_> {
+    const MAX: usize = 100;
+}
+
+impl MaxRepoLen for Game<'_, '_, '_> {
+    const MAX: usize = 10;
+}
+
 #[derive(Default)]
 pub struct Container<'id, 'player, 'game> {
     pub players: Repo<'id, Player<'id, 'player, 'game>>,
@@ -15,22 +34,14 @@ pub struct Player<'id, 'player, 'game> {
     pub player_index: usize,
 }
 
-impl MaxRepoLen for Player<'_, '_, '_> {
-    const MAX: usize = 100;
-}
-
-#[derive(Debug)]
-pub enum PlayerJoinServerError {
-    ReachedMaxPlayers,
-}
-
 pub struct Game<'id, 'player, 'game> {
     pub joined_players: RefRepo<'id, 'game, Player<'id, 'player, 'game>>,
     pub game_index: usize,
 }
 
-impl MaxRepoLen for Game<'_, '_, '_> {
-    const MAX: usize = 10;
+#[derive(Debug)]
+pub enum PlayerJoinServerError {
+    ReachedMaxPlayers,
 }
 
 #[derive(Debug)]
@@ -43,19 +54,10 @@ pub enum GameJoinError {
     ReachedMaxGamePlayers,
 }
 
-#[allow(type_alias_bounds)]
-pub type Repo<'id, T: MaxRepoLen> = Vec<LCell<'id, T>, { <T as MaxRepoLen>::MAX }>;
-#[allow(type_alias_bounds)]
-pub type RefRepo<'id, 'a, T: MaxRepoLen> = Vec<&'a LCell<'id, T>, { <T as MaxRepoLen>::MAX }>;
-
-pub trait MaxRepoLen {
-    const MAX: usize;
-}
-
 impl<'id, 'player, 'game> Container<'id, 'player, 'game> {
     pub const LOBBY_GAME_INDEX: usize = 0;
 
-    pub fn new(owner: &mut LCellOwner<'id>) -> Self {
+    pub fn new() -> Self {
         let mut result = Self {
             players: Vec::uninit(),
             games: Vec::uninit(),
@@ -86,6 +88,26 @@ impl<'id, 'player, 'game> Container<'id, 'player, 'game> {
         unsafe { self.players.get_unchecked(index) }
     }
 
+    pub fn init_new_connection(
+        &mut self,
+        connection: &mut Connection<'id>,
+    ) -> Result<(), PlayerJoinServerError> {
+        let player_ind = self.new_player()?;
+        connection.player_index = Some(player_ind);
+        Ok(())
+    }
+
+    pub fn deinit_connection(
+        &mut self,
+        owner: &mut LCellOwner<'id>,
+        connection: &mut Connection<'id>,
+    ) {
+        if let Some(player_index) = connection.player_index {
+            let player_cell = self.get_player(player_index);
+            self.player_quit_game(owner, player_cell)
+        }
+    }
+
     pub fn new_player(&mut self) -> Result<usize, PlayerJoinServerError> {
         let player_index = self.players.len();
         let player_cell = LCell::new(Player {
@@ -105,6 +127,7 @@ impl<'id, 'player, 'game> Container<'id, 'player, 'game> {
         game_cell: &'game LCell<'id, Game<'id, 'player, 'game>>,
         player_cell: &'player LCell<'id, Player<'id, 'player, 'game>>,
     ) -> Result<(), GameJoinError> {
+        self.player_quit_game(owner, player_cell);
         let (game, player) = owner.rw2(game_cell, player_cell);
         let game_player_index = game.joined_players.len();
         game.joined_players
@@ -113,5 +136,19 @@ impl<'id, 'player, 'game> Container<'id, 'player, 'game> {
         player.joined_game_players_index = MaybeUninit::new(game_player_index);
         player.joined_game = Some(&game_cell);
         Ok(())
+    }
+
+    pub fn player_quit_game(
+        &self,
+        owner: &mut LCellOwner<'id>,
+        player_cell: &LCell<'id, Player<'id, 'player, 'game>>,
+    ) {
+        let player = owner.rw(player_cell);
+        if let Some(joined_game) = player.joined_game {
+            let (game, player) = owner.rw2(joined_game, player_cell);
+            let game_player_index = unsafe { player.joined_game_players_index.assume_init() };
+            unsafe { game.joined_players.swap_remove_unchecked(game_player_index) };
+            player.joined_game = None;
+        }
     }
 }

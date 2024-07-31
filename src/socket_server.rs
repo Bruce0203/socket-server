@@ -17,11 +17,11 @@ where
 {
     #[deref]
     #[deref_mut]
-    connection: T::Connection,
+    pub connection: T::Connection,
+    pub read_buf: LCell<'id, Cursor<u8, { T::READ_BUFFFER_LEN }>>,
+    pub write_buf: LCell<'id, Cursor<u8, { T::WRITE_BUFFER_LEN }>>,
     stream: TcpStream,
     state: SocketState,
-    pub read_buf: Cursor<u8, { T::READ_BUFFFER_LEN }>,
-    pub write_buf: Cursor<u8, { T::WRITE_BUFFER_LEN }>,
     token: usize,
     registry: &'registry LCell<'id, Registry<'id, T>>,
 }
@@ -48,7 +48,7 @@ where
     [(); T::WRITE_BUFFER_LEN]:,
     [(); T::MAX_CONNECTIONS]:,
 {
-    pub fn register_write_event(&mut self, owner: &mut LCellOwner<'id>) {
+    pub fn register_flush_event(&mut self, owner: &mut LCellOwner<'id>) {
         self.register_event(owner);
         self.state = SocketState::WriteRequest;
     }
@@ -58,7 +58,7 @@ where
         self.state = SocketState::CloseRequest;
     }
 
-    pub fn register_event(&mut self, owner: &mut LCellOwner<'id>) {
+    pub(self) fn register_event(&mut self, owner: &mut LCellOwner<'id>) {
         if self.state == SocketState::Idle {
             let registry = owner.rw(self.registry);
             unsafe { registry.push_unchecked(self.token) };
@@ -141,8 +141,8 @@ where
             connection: T::Connection::default(),
             stream,
             state: SocketState::default(),
-            read_buf: Cursor::new(),
-            write_buf: Cursor::new(),
+            read_buf: owner.cell(Cursor::new()),
+            write_buf: owner.cell(Cursor::new()),
             token: *ind,
             registry,
         })?;
@@ -161,7 +161,7 @@ where
 
     fn read(&mut self, owner: &mut LCellOwner<'id>, token: usize) {
         let socket = unsafe { self.sockets.get_unchecked_mut(token) };
-        match socket.read_buf.push_from_read(&mut socket.stream) {
+        match socket.read_buf.rw(owner).push_from_read(&mut socket.stream) {
             Ok(()) => self.server.read(owner, socket),
             Err(_) => socket.register_close_event(owner),
         }
@@ -181,7 +181,7 @@ where
                 SocketState::WriteRequest => {
                     socket.state = SocketState::Idle;
                     self.server.flush(owner, socket);
-                    match socket.write_buf.push_to_write(&mut socket.stream) {
+                    match socket.write_buf.rw(owner).push_to_write(&mut socket.stream) {
                         Ok(()) => {}
                         Err(_) => self.close(owner, id),
                     };

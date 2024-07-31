@@ -4,3 +4,4 @@
 pub mod app;
 pub mod socket_server;
 pub mod tick_machine;
+pub mod websocket;

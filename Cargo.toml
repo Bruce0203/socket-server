@@ -5,14 +5,17 @@ edition = "2021"
 
 [dependencies]
 criterion = "0.5.1"
+data-encoding = "2.6.0"
 derive_more = "0.99.18"
 fast_collections = "0.56.0"
 fast_delegate = "0.13.0"
 ghost-cell = "0.2.6"
+httparse = "1.9.4"
 loop-code = "0.5.2"
 mio = { version = "1.0.1", features = ["net", "os-poll"] }
 polling = "3.7.2"
 qcell = "0.5.4"
+sha1 = "0.10.6"
 static-rc = { version = "0.6.1", features = ["compile-time-ratio"] }
 
 
