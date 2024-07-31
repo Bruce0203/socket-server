@@ -56,7 +56,7 @@ fn main() {
     }
 
     run_with_stack_size(64 * 1024 * 1024, || {
-        let addr = "[::]:25525".parse().unwrap();
+        let addr = "[::]:25555".parse().unwrap();
         entry_point(Server::default(), addr);
     });
 }
