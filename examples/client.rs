@@ -14,7 +14,7 @@ fn main() {
     let mut poll = Poll::new().unwrap();
 
     let mut token_acc = 0;
-    let target_addr: SocketAddr = "158.180.88.171:25525".parse().unwrap();
+    let target_addr: SocketAddr = "158.180.88.171:25555".parse().unwrap();
     loop {
         let mut stream = TcpStream::connect(target_addr).unwrap();
         poll.registry()
