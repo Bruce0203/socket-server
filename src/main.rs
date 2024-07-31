@@ -29,7 +29,6 @@ fn main() {
             connection: &mut Socket<'id, '_, Self>,
         ) {
             self.acc += 1;
-            connection.register_close_event(owner);
         }
 
         fn read<'id>(
