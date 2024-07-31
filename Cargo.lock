@@ -410,22 +410,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "newp"
-version = "0.1.0"
-dependencies = [
- "criterion",
- "derive_more",
- "fast_collections",
- "fast_delegate",
- "ghost-cell",
- "loop-code",
- "mio",
- "polling",
- "qcell",
- "static-rc",
-]
-
-[[package]]
 name = "nu-ansi-term"
 version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -704,6 +688,22 @@ name = "smallvec"
 version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
+
+[[package]]
+name = "socket_server"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "derive_more",
+ "fast_collections",
+ "fast_delegate",
+ "ghost-cell",
+ "loop-code",
+ "mio",
+ "polling",
+ "qcell",
+ "static-rc",
+]
 
 [[package]]
 name = "static-rc"

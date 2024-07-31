@@ -3,9 +3,8 @@
 
 use std::time::Duration;
 
-use fast_collections::Cursor;
-use newp::net::{entry_point, run_with_stack_size, Socket, SocketListener};
 use qcell::LCellOwner;
+use socket_server::socket_server::{entry_point, Socket, SocketListener};
 
 fn main() {
     #[derive(Default)]
@@ -60,4 +59,16 @@ fn main() {
         let addr = "[::]:25525".parse().unwrap();
         entry_point(Server::default(), addr);
     });
+}
+
+fn run_with_stack_size<F>(stack_size: usize, f: F)
+where
+    F: FnOnce() + Send + 'static,
+{
+    std::thread::Builder::new()
+        .stack_size(stack_size)
+        .spawn(f)
+        .unwrap()
+        .join()
+        .unwrap()
 }

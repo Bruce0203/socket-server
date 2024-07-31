@@ -23,22 +23,11 @@ where
 }
 
 #[derive(Deref, DerefMut)]
-pub struct Registry<T: SocketListener>
+pub(self) struct Registry<T: SocketListener>
 where
     [(); T::MAX_CONNECTIONS]:,
 {
     vec: Vec<usize, { T::MAX_CONNECTIONS }>,
-}
-
-impl<T: SocketListener> Default for Registry<T>
-where
-    [(); T::MAX_CONNECTIONS]:,
-{
-    fn default() -> Self {
-        Self {
-            vec: Default::default(),
-        }
-    }
 }
 
 #[derive(Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -197,25 +186,13 @@ where
     }
 }
 
-pub fn run_with_stack_size<F>(stack_size: usize, f: F)
-where
-    F: FnOnce() + Send + 'static,
-{
-    std::thread::Builder::new()
-        .stack_size(stack_size)
-        .spawn(f)
-        .unwrap()
-        .join()
-        .unwrap()
-}
-
 pub fn entry_point<T>(server: T, addr: SocketAddr)
 where
     T: SocketListener<Connection: Default>,
     [(); T::MAX_CONNECTIONS]:,
 {
     LCellOwner::scope(|mut owner| {
-        let registry = owner.cell(Registry::default());
+        let registry = owner.cell(Registry { vec: Vec::uninit() });
         let mut selector = Selector::new(server);
         const LISTENER_TOKEN: Token = Token(usize::MAX);
         let mut listener = {
