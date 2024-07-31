@@ -15,7 +15,7 @@ fn main() {
     let mut poll = Poll::new().unwrap();
 
     let mut token_acc = 0;
-    let target_addr: SocketAddr = "158.180.88.171:25555".parse().unwrap();
+    let target_addr: SocketAddr = "158.180.88.171:25565".parse().unwrap();
 
     let mut connections = Vec::<(usize, TcpStream), MAX_CONNECTIONS>::uninit();
     loop {

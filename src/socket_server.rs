@@ -9,7 +9,7 @@ use qcell::{LCell, LCellOwner};
 use std::{net::SocketAddr, time::Duration, usize};
 
 #[derive(Deref, DerefMut)]
-pub struct Socket<'id: 'registry, 'registry, T: SocketListener>
+pub struct Socket<'id: 'registry, 'registry, T: SocketListener<'id>>
 where
     [(); T::READ_BUFFFER_LEN]:,
     [(); T::WRITE_BUFFER_LEN]:,
@@ -23,11 +23,11 @@ where
     pub read_buf: Cursor<u8, { T::READ_BUFFFER_LEN }>,
     pub write_buf: Cursor<u8, { T::WRITE_BUFFER_LEN }>,
     token: usize,
-    registry: &'registry LCell<'id, Registry<T>>,
+    registry: &'registry LCell<'id, Registry<'id, T>>,
 }
 
 #[derive(Deref, DerefMut)]
-pub(self) struct Registry<T: SocketListener>
+pub(self) struct Registry<'id, T: SocketListener<'id>>
 where
     [(); T::MAX_CONNECTIONS]:,
 {
@@ -42,7 +42,7 @@ pub enum SocketState {
     CloseRequest,
 }
 
-impl<'id, 'registry, T: SocketListener> Socket<'id, 'registry, T>
+impl<'id, 'registry, T: SocketListener<'id>> Socket<'id, 'registry, T>
 where
     [(); T::READ_BUFFFER_LEN]:,
     [(); T::WRITE_BUFFER_LEN]:,
@@ -66,41 +66,41 @@ where
     }
 }
 
-pub trait SocketListener: Sized {
+pub trait SocketListener<'id>: Sized {
     const MAX_CONNECTIONS: usize;
     const READ_BUFFFER_LEN: usize;
     const WRITE_BUFFER_LEN: usize;
     const TICK: Duration;
     type Connection;
 
-    fn tick<'id>(&mut self, owner: &mut LCellOwner<'id>);
+    fn tick(&mut self, owner: &mut LCellOwner<'id>);
 
-    fn accept<'id>(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>)
+    fn accept(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>)
     where
         [(); Self::READ_BUFFFER_LEN]:,
         [(); Self::WRITE_BUFFER_LEN]:,
         [(); Self::MAX_CONNECTIONS]:;
 
-    fn read<'id>(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>)
+    fn read(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>)
     where
         [(); Self::READ_BUFFFER_LEN]:,
         [(); Self::WRITE_BUFFER_LEN]:,
         [(); Self::MAX_CONNECTIONS]:;
 
-    fn flush<'id>(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>)
+    fn flush(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>)
     where
         [(); Self::READ_BUFFFER_LEN]:,
         [(); Self::WRITE_BUFFER_LEN]:,
         [(); Self::MAX_CONNECTIONS]:;
 
-    fn close<'id>(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>)
+    fn close(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>)
     where
         [(); Self::READ_BUFFFER_LEN]:,
         [(); Self::WRITE_BUFFER_LEN]:,
         [(); Self::MAX_CONNECTIONS]:;
 }
 
-pub struct Selector<'id, 'registry, T: SocketListener>
+pub struct Selector<'id, 'registry, T: SocketListener<'id>>
 where
     [(); T::READ_BUFFFER_LEN]:,
     [(); T::WRITE_BUFFER_LEN]:,
@@ -114,7 +114,7 @@ where
 
 impl<'id, 'registry, T> Selector<'id, 'registry, T>
 where
-    T: SocketListener<Connection: Default>,
+    T: SocketListener<'id, Connection: Default>,
     [(); T::READ_BUFFFER_LEN]:,
     [(); T::WRITE_BUFFER_LEN]:,
     [(); T::MAX_CONNECTIONS]:,
@@ -134,29 +134,28 @@ where
         &mut self,
         owner: &mut LCellOwner<'id>,
         listener: &mut TcpListener,
-        registry: &'registry LCell<'id, Registry<T>>,
+        registry: &'registry LCell<'id, Registry<'id, T>>,
     ) -> Result<(), ()> {
-        let (mut stream, _addr) = listener.accept().map_err(|_| ())?;
-        let id = self.sockets.add_with_index(|ind| {
-            mio::Registry::register(
-                &self.mio_registry,
-                &mut stream,
-                Token(*ind),
-                Interest::READABLE,
-            )
-            .unwrap();
-            Socket::<'_, '_, T> {
-                stream,
-                registry,
-                connection: T::Connection::default(),
-                state: SocketState::default(),
-                token: *ind,
-                read_buf: Cursor::new(),
-                write_buf: Cursor::new(),
-            }
+        let (stream, _addr) = listener.accept().map_err(|_| ())?;
+        let id = self.sockets.add_with_index(|ind| Socket::<'_, '_, T> {
+            connection: T::Connection::default(),
+            stream,
+            state: SocketState::default(),
+            read_buf: Cursor::new(),
+            write_buf: Cursor::new(),
+            token: *ind,
+            registry,
         })?;
         let socket = unsafe { self.sockets.get_unchecked_mut(id) };
-        self.server.accept(owner, socket);
+        match mio::Registry::register(
+            &self.mio_registry,
+            &mut socket.stream,
+            Token(socket.token),
+            Interest::READABLE,
+        ) {
+            Ok(()) => self.server.accept(owner, socket),
+            Err(_) => socket.register_close_event(owner),
+        }
         Ok(())
     }
 
@@ -171,7 +170,7 @@ where
     fn flush_registry(
         &mut self,
         owner: &mut LCellOwner<'id>,
-        registry: &'registry LCell<'id, Registry<T>>,
+        registry: &'registry LCell<'id, Registry<'id, T>>,
     ) {
         let registry_vec_len = registry.ro(owner).len();
         for ind in 0..registry_vec_len {
@@ -202,43 +201,40 @@ where
     }
 }
 
-pub fn entry_point<T>(server: T, addr: SocketAddr)
+pub fn entry_point<'id, T>(owner: &mut LCellOwner<'id>, server: T, addr: SocketAddr)
 where
-    T: SocketListener<Connection: Default>,
+    T: SocketListener<'id, Connection: Default>,
     [(); T::READ_BUFFFER_LEN]:,
     [(); T::WRITE_BUFFER_LEN]:,
     [(); T::MAX_CONNECTIONS]:,
 {
-    LCellOwner::scope(|mut owner| {
-        let registry = owner.cell(Registry { vec: Vec::uninit() });
-        let mut selector = Selector::new(server);
-        const LISTENER_TOKEN: Token = Token(usize::MAX);
-        let mut listener = {
-            let mut listener = TcpListener::bind(addr).unwrap();
-            listener.set_ttl(64).unwrap();
-            selector
-                .mio_registry
-                .register(&mut listener, LISTENER_TOKEN, Interest::READABLE)
-                .unwrap();
-            listener
-        };
-        let mut events = Events::with_capacity(T::MAX_CONNECTIONS);
-        let mut tick_machine = TickMachine::new(T::TICK);
-        loop {
-            selector
-                .poll
-                .poll(&mut events, Some(Duration::ZERO))
-                .unwrap();
-            tick_machine.tick(|| selector.server.tick(&mut owner));
-            for event in events.iter() {
-                let token = event.token();
-                if token == LISTENER_TOKEN {
-                    let _result = selector.accept(&mut owner, &mut listener, &registry);
-                } else {
-                    selector.read(&mut owner, token.0)
-                }
+    let registry = owner.cell(Registry { vec: Vec::uninit() });
+    let mut selector = Selector::new(server);
+    const LISTENER_TOKEN: Token = Token(usize::MAX);
+    let mut listener = {
+        let mut listener = TcpListener::bind(addr).unwrap();
+        selector
+            .mio_registry
+            .register(&mut listener, LISTENER_TOKEN, Interest::READABLE)
+            .unwrap();
+        listener
+    };
+    let mut events = Events::with_capacity(T::MAX_CONNECTIONS);
+    let mut tick_machine = TickMachine::new(T::TICK);
+    loop {
+        selector
+            .poll
+            .poll(&mut events, Some(Duration::ZERO))
+            .unwrap();
+        tick_machine.tick(|| selector.server.tick(owner));
+        for event in events.iter() {
+            let token = event.token();
+            if token == LISTENER_TOKEN {
+                let _result = selector.accept(owner, &mut listener, &registry);
+            } else {
+                selector.read(owner, token.0)
             }
-            selector.flush_registry(&mut owner, &registry)
         }
-    })
+        selector.flush_registry(owner, &registry)
+    }
 }
