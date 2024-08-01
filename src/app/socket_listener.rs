@@ -7,7 +7,7 @@ use crate::{
     websocket::{websocket_flush, websocket_read, ReadError, WebSocketState},
 };
 
-use super::container::{Container, PlayerJoinServerError};
+use super::container::App;
 
 #[derive(Default)]
 pub struct Connection<'id> {
@@ -15,7 +15,7 @@ pub struct Connection<'id> {
     pub websocket: LCell<'id, WebSocketState>,
 }
 
-impl<'id, 'player, 'game> SocketListener<'id> for Container<'id, 'player, 'game> {
+impl<'id, 'a> SocketListener<'id> for App {
     const MAX_CONNECTIONS: usize = 5000;
     const READ_BUFFFER_LEN: usize = 100;
     const WRITE_BUFFER_LEN: usize = 100;
@@ -58,6 +58,6 @@ impl<'id, 'player, 'game> SocketListener<'id> for Container<'id, 'player, 'game>
     }
 
     fn close(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>) {
-        self.deinit_connection(owner, connection)
+        //self.deinit_connection(owner, connection)
     }
 }
