@@ -283,9 +283,9 @@ dependencies = [
 
 [[package]]
 name = "fast_collections"
-version = "0.56.0"
+version = "0.59.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f01d2af832e18230d69ef8125f5cf29544a5f60a1e374575dec8a80dd844615"
+checksum = "b18d6f9df68f06a850512c84b7ba30ac925813880a14384b7fd29b5d69d8297f"
 
 [[package]]
 name = "fast_delegate"

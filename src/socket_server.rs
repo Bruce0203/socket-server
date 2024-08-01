@@ -73,28 +73,40 @@ pub trait SocketListener<'id>: Sized {
     const TICK: Duration;
     type Connection;
 
-    fn tick(&mut self, owner: &mut LCellOwner<'id>);
+    fn tick(app: &LCell<'id, Self>, owner: &mut LCellOwner<'id>);
 
-    fn accept(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>)
-    where
+    fn accept(
+        app: &LCell<'id, Self>,
+        owner: &mut LCellOwner<'id>,
+        connection: &mut Socket<'id, '_, Self>,
+    ) where
         [(); Self::READ_BUFFFER_LEN]:,
         [(); Self::WRITE_BUFFER_LEN]:,
         [(); Self::MAX_CONNECTIONS]:;
 
-    fn read(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>)
-    where
+    fn read(
+        app: &LCell<'id, Self>,
+        owner: &mut LCellOwner<'id>,
+        connection: &mut Socket<'id, '_, Self>,
+    ) where
         [(); Self::READ_BUFFFER_LEN]:,
         [(); Self::WRITE_BUFFER_LEN]:,
         [(); Self::MAX_CONNECTIONS]:;
 
-    fn flush(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>)
-    where
+    fn flush(
+        app: &LCell<'id, Self>,
+        owner: &mut LCellOwner<'id>,
+        connection: &mut Socket<'id, '_, Self>,
+    ) where
         [(); Self::READ_BUFFFER_LEN]:,
         [(); Self::WRITE_BUFFER_LEN]:,
         [(); Self::MAX_CONNECTIONS]:;
 
-    fn close(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>)
-    where
+    fn close(
+        app: &LCell<'id, Self>,
+        owner: &mut LCellOwner<'id>,
+        connection: &mut Socket<'id, '_, Self>,
+    ) where
         [(); Self::READ_BUFFFER_LEN]:,
         [(); Self::WRITE_BUFFER_LEN]:,
         [(); Self::MAX_CONNECTIONS]:;
@@ -109,7 +121,7 @@ where
     poll: Poll,
     mio_registry: mio::Registry,
     sockets: Slab<Socket<'id, 'registry, T>, { T::MAX_CONNECTIONS }>,
-    server: T,
+    server: LCell<'id, T>,
 }
 
 impl<'id, 'registry, T> Selector<'id, 'registry, T>
@@ -119,14 +131,14 @@ where
     [(); T::WRITE_BUFFER_LEN]:,
     [(); T::MAX_CONNECTIONS]:,
 {
-    fn new(server: T) -> Self {
+    fn new(server: T, owner: &mut LCellOwner<'id>) -> Self {
         let poll = Poll::new().unwrap();
         let mio_registry = poll.registry().try_clone().unwrap();
         Self {
             poll,
             mio_registry,
             sockets: Slab::new(),
-            server,
+            server: owner.cell(server),
         }
     }
 
@@ -138,7 +150,7 @@ where
     ) -> Result<(), ()> {
         let (stream, _addr) = listener.accept().map_err(|_| ())?;
         let id = self.sockets.add_with_index(|ind| Socket::<'_, '_, T> {
-            connection: T::Connection::default(),
+            connection: Default::default(),
             stream,
             state: SocketState::default(),
             read_buf: owner.cell(Cursor::new()),
@@ -153,7 +165,7 @@ where
             Token(socket.token),
             Interest::READABLE,
         ) {
-            Ok(()) => self.server.accept(owner, socket),
+            Ok(()) => T::accept(&self.server, owner, socket),
             Err(_) => socket.register_close_event(owner),
         }
         Ok(())
@@ -162,7 +174,7 @@ where
     fn read(&mut self, owner: &mut LCellOwner<'id>, token: usize) {
         let socket = unsafe { self.sockets.get_unchecked_mut(token) };
         match socket.read_buf.rw(owner).push_from_read(&mut socket.stream) {
-            Ok(()) => self.server.read(owner, socket),
+            Ok(()) => T::read(&self.server, owner, socket),
             Err(_) => socket.register_close_event(owner),
         }
     }
@@ -180,7 +192,7 @@ where
                 SocketState::Idle => continue,
                 SocketState::WriteRequest => {
                     socket.state = SocketState::Idle;
-                    self.server.flush(owner, socket);
+                    T::flush(&self.server, owner, socket);
                     match socket.write_buf.rw(owner).push_to_write(&mut socket.stream) {
                         Ok(()) => {}
                         Err(_) => self.close(owner, id),
@@ -194,7 +206,7 @@ where
 
     fn close(&mut self, owner: &mut LCellOwner<'id>, id: usize) {
         let socket = unsafe { self.sockets.get_unchecked_mut(id) };
-        self.server.close(owner, socket);
+        T::close(&self.server, owner, socket);
         self.mio_registry.deregister(&mut socket.stream).unwrap();
         let token = socket.token;
         unsafe { self.sockets.remove_unchecked(token) };
@@ -209,7 +221,7 @@ where
     [(); T::MAX_CONNECTIONS]:,
 {
     let registry = owner.cell(Registry { vec: Vec::uninit() });
-    let mut selector = Selector::new(server);
+    let mut selector = Selector::new(server, owner);
     const LISTENER_TOKEN: Token = Token(usize::MAX);
     let mut listener = {
         let mut listener = TcpListener::bind(addr).unwrap();
@@ -226,7 +238,7 @@ where
             .poll
             .poll(&mut events, Some(Duration::ZERO))
             .unwrap();
-        tick_machine.tick(|| selector.server.tick(owner));
+        tick_machine.tick(|| T::tick(&selector.server, owner));
         for event in events.iter() {
             let token = event.token();
             if token == LISTENER_TOKEN {
