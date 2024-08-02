@@ -3,8 +3,6 @@ use httparse::{Request, EMPTY_HEADER};
 use qcell::{LCell, LCellOwner};
 use sha1::{Digest, Sha1};
 
-use crate::socket_server::{Socket, SocketListener};
-
 pub enum ReadError {
     NotFullRead,
     FlushRequest,

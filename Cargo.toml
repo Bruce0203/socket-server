@@ -10,7 +10,6 @@ derive_more = "0.99.18"
 fast_collections = "0.59.0"
 fast_delegate = "0.13.0"
 ghost-cell = "0.2.6"
-gxhash = "3.4.1"
 httparse = "1.9.4"
 loop-code = "0.5.2"
 mio = { version = "1.0.1", features = ["net", "os-poll"] }
