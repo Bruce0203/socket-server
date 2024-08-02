@@ -1,30 +1,32 @@
-use fast_collections::Vec;
-use qcell::LCellOwner;
+use sectorize::World;
 
 use super::{
-    repo::{Id, Repo},
+    repo::{Element, Id, Repo},
     socket_listener::Connection,
 };
 
-pub struct Container<'id> {
-    games: Repo<'id, Game<'id>>,
-    players: Repo<'id, Player<'id>>,
+#[derive(Default)]
+pub struct Container {
+    world: World<Game, Player, 100>,
 }
 
-pub struct Player<'id> {
-    joined_game: Option<Id<'id, Game<'id>>>,
+pub struct Player {}
+
+pub struct Game {}
+
+pub fn init_connection<'id>(app: &mut Container, connection: &mut Connection) -> Result<(), ()> {
+    let player_id = app.world.create_entity(Player {}).map_err(|_| ())?;
+    connection.player_id = Some(player_id);
+    Ok(())
 }
 
-pub struct Game<'id> {
-    joined_players: Vec<Id<'id, Player<'id>>, 100>,
+pub fn join_game(game: &mut Element<Game>, player: &mut Element<Player>) -> Result<(), ()> {
+
+    player.joined_game = Some(game.index);
+    Ok(())
 }
 
-pub fn init_connection<'id>(
-    owner: &mut LCellOwner<'id>,
-    app: &mut Container<'id>,
-    connection: &mut Connection<'id>,
-) -> Result<(), ()> {
-    let player = app.players.add(owner, Player { joined_game: None })?;
-    connection.player_index = Some(player);
+pub fn quit_game(app: &mut Container, player: &mut Element<Player>) -> Result<(), ()> {
+    let game = app.games.get_mut(player.joined_game.ok_or_else(|| ())?);
     Ok(())
 }

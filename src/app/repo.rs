@@ -1,77 +1,104 @@
-use std::{thread::sleep, time::Duration};
+use std::{
+    marker::PhantomData,
+    ops::{Index, IndexMut},
+};
 
 use fast_collections::Vec;
-use qcell::{LCell, LCellOwner};
-use static_rc::StaticRc;
 
-pub struct Repo<'id, T> {
-    elements: Vec<StaticRc<LCell<'id, RepoCell<T>>, 1, 2>, 100>,
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+pub struct Id<T> {
+    pub index: usize,
+    _marker: PhantomData<T>,
 }
 
-pub struct RepoCell<T> {
-    index: usize,
+impl<T> Clone for Id<T> {
+    fn clone(&self) -> Self {
+        Self {
+            index: self.index,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T> Copy for Id<T> {}
+
+pub struct Repo<T, const N: usize> {
+    elements: Vec<Element<T>, N>,
+}
+
+#[derive(derive_more::Deref, derive_more::DerefMut)]
+pub struct Element<T> {
+    pub index: Id<T>,
+    #[deref]
+    #[deref_mut]
     data: T,
 }
 
-pub struct Id<'id, T> {
-    element: StaticRc<LCell<'id, RepoCell<T>>, 1, 2>,
-}
-
-impl<'id, T> Id<'id, T> {
-    pub fn get<'lt: 'get, 'get, 'owner: 'get>(
-        &'lt self,
-        owner: &'owner LCellOwner<'id>,
-    ) -> &'get T {
-        &self.element.ro(owner).data
-    }
-
-    pub fn get_mut<'lt: 'get, 'get, 'owner: 'get>(
-        &'lt mut self,
-        owner: &'owner mut LCellOwner<'id>,
-    ) -> &'get mut T {
-        &mut self.element.rw(owner).data
+impl<T, const N: usize> Default for Repo<T, N> {
+    fn default() -> Self {
+        Self {
+            elements: Default::default(),
+        }
     }
 }
 
-impl<'id, T> Repo<'id, T> {
+impl<T, const N: usize> Repo<T, N> {
     pub fn new() -> Self {
         Self {
             elements: Vec::uninit(),
         }
     }
 
-    pub fn add(&mut self, owner: &mut LCellOwner<'id>, data: T) -> Result<Id<'id, T>, ()> {
-        let index = self.elements.len();
-        let element = StaticRc::new(owner.cell(RepoCell { index, data }));
-        let (rc1, rc2) = StaticRc::split::<1, 1>(element);
-        self.elements.push(rc1).map_err(|_| ())?;
-        let id = Id { element: rc2 };
+    pub fn len(&self) -> usize {
+        self.elements.len()
+    }
+
+    pub fn add(&mut self, data: T) -> Result<Id<T>, ()> {
+        let id = Id {
+            index: self.elements.len(),
+            _marker: PhantomData,
+        };
+        self.elements
+            .push(Element { index: id, data })
+            .map_err(|_| ())?;
         Ok(id)
     }
 
-    pub fn remove(&mut self, owner: &mut LCellOwner<'id>, id: Id<'id, T>) {
-        let ind = id.element.ro(owner).index;
-        sleep(Duration::from_secs(4));
-        let removed = unsafe { self.elements.swap_remove_unchecked(ind) };
-        let joined: StaticRc<LCell<'id, RepoCell<T>>, 2, 2> = StaticRc::join(removed, id.element);
-        drop(joined);
+    pub fn remove(&mut self, id: Id<T>) {
+        unsafe { self.elements.swap_remove_unchecked(id.index) };
+    }
+
+    pub fn get(&mut self, id: Id<T>) -> &Element<T> {
+        unsafe { self.elements.get_unchecked(id.index) }
+    }
+
+    pub fn get_mut(&mut self, id: Id<T>) -> &mut Element<T> {
+        unsafe { self.elements.get_unchecked_mut(id.index) }
+    }
+}
+
+impl<T, const N: usize> Index<Id<T>> for Repo<T, N> {
+    type Output = Element<T>;
+
+    fn index(&self, index: Id<T>) -> &Self::Output {
+        unsafe { self.elements.get_unchecked(index.index) }
+    }
+}
+
+impl<T, const N: usize> IndexMut<Id<T>> for Repo<T, N> {
+    fn index_mut(&mut self, index: Id<T>) -> &mut Self::Output {
+        unsafe { self.elements.get_unchecked_mut(index.index) }
     }
 }
 
 #[cfg(test)]
 mod test {
-    use qcell::LCellOwner;
-
     use super::Repo;
 
     #[test]
     fn test() {
-        LCellOwner::scope(|mut owner| {
-            struct Token(usize);
-            let mut repo: Repo<Token> = Repo::new();
-            let mut id = repo.add(&mut owner, Token(123)).unwrap();
-            let token = id.get_mut(&mut owner);
-            repo.remove(&mut owner, id);
-        });
+        let mut repo: Repo<u8, 10> = Repo::new();
+        let id = repo.add(0).unwrap();
+        repo.remove(id);
     }
 }

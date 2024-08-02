@@ -73,40 +73,28 @@ pub trait SocketListener<'id>: Sized {
     const TICK: Duration;
     type Connection;
 
-    fn tick(app: &LCell<'id, Self>, owner: &mut LCellOwner<'id>);
+    fn tick(&mut self, owner: &mut LCellOwner<'id>);
 
-    fn accept(
-        app: &LCell<'id, Self>,
-        owner: &mut LCellOwner<'id>,
-        connection: &mut Socket<'id, '_, Self>,
-    ) where
+    fn accept(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>)
+    where
         [(); Self::READ_BUFFFER_LEN]:,
         [(); Self::WRITE_BUFFER_LEN]:,
         [(); Self::MAX_CONNECTIONS]:;
 
-    fn read(
-        app: &LCell<'id, Self>,
-        owner: &mut LCellOwner<'id>,
-        connection: &mut Socket<'id, '_, Self>,
-    ) where
+    fn read(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>)
+    where
         [(); Self::READ_BUFFFER_LEN]:,
         [(); Self::WRITE_BUFFER_LEN]:,
         [(); Self::MAX_CONNECTIONS]:;
 
-    fn flush(
-        app: &LCell<'id, Self>,
-        owner: &mut LCellOwner<'id>,
-        connection: &mut Socket<'id, '_, Self>,
-    ) where
+    fn flush(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>)
+    where
         [(); Self::READ_BUFFFER_LEN]:,
         [(); Self::WRITE_BUFFER_LEN]:,
         [(); Self::MAX_CONNECTIONS]:;
 
-    fn close(
-        app: &LCell<'id, Self>,
-        owner: &mut LCellOwner<'id>,
-        connection: &mut Socket<'id, '_, Self>,
-    ) where
+    fn close(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>)
+    where
         [(); Self::READ_BUFFFER_LEN]:,
         [(); Self::WRITE_BUFFER_LEN]:,
         [(); Self::MAX_CONNECTIONS]:;
@@ -121,7 +109,7 @@ where
     poll: Poll,
     mio_registry: mio::Registry,
     sockets: Slab<Socket<'id, 'registry, T>, { T::MAX_CONNECTIONS }>,
-    server: LCell<'id, T>,
+    server: T,
 }
 
 impl<'id, 'registry, T> Selector<'id, 'registry, T>
@@ -138,7 +126,7 @@ where
             poll,
             mio_registry,
             sockets: Slab::new(),
-            server: owner.cell(server),
+            server: server,
         }
     }
 
@@ -165,7 +153,7 @@ where
             Token(socket.token),
             Interest::READABLE,
         ) {
-            Ok(()) => T::accept(&self.server, owner, socket),
+            Ok(()) => self.server.accept(owner, socket),
             Err(_) => socket.register_close_event(owner),
         }
         Ok(())
@@ -174,7 +162,7 @@ where
     fn read(&mut self, owner: &mut LCellOwner<'id>, token: usize) {
         let socket = unsafe { self.sockets.get_unchecked_mut(token) };
         match socket.read_buf.rw(owner).push_from_read(&mut socket.stream) {
-            Ok(()) => T::read(&self.server, owner, socket),
+            Ok(()) => self.server.read(owner, socket),
             Err(_) => socket.register_close_event(owner),
         }
     }
@@ -192,7 +180,7 @@ where
                 SocketState::Idle => continue,
                 SocketState::WriteRequest => {
                     socket.state = SocketState::Idle;
-                    T::flush(&self.server, owner, socket);
+                    self.server.flush(owner, socket);
                     match socket.write_buf.rw(owner).push_to_write(&mut socket.stream) {
                         Ok(()) => {}
                         Err(_) => self.close(owner, id),
@@ -206,7 +194,7 @@ where
 
     fn close(&mut self, owner: &mut LCellOwner<'id>, id: usize) {
         let socket = unsafe { self.sockets.get_unchecked_mut(id) };
-        T::close(&self.server, owner, socket);
+        self.server.close(owner, socket);
         self.mio_registry.deregister(&mut socket.stream).unwrap();
         let token = socket.token;
         unsafe { self.sockets.remove_unchecked(token) };
@@ -238,7 +226,7 @@ where
             .poll
             .poll(&mut events, Some(Duration::ZERO))
             .unwrap();
-        tick_machine.tick(|| T::tick(&selector.server, owner));
+        tick_machine.tick(|| selector.server.tick(owner));
         for event in events.iter() {
             let token = event.token();
             if token == LISTENER_TOKEN {

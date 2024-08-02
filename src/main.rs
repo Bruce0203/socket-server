@@ -2,7 +2,7 @@
 #![feature(generic_const_exprs)]
 
 use qcell::LCellOwner;
-use socket_server::{app::socket_listener::Container, socket_server::entry_point};
+use socket_server::{app::container::Container, socket_server::entry_point};
 
 fn main() {
     run_with_stack_size(64 * 1024 * 1024, || {
