@@ -19,7 +19,6 @@ rand = "0.8.5"
 sha1 = "0.10.6"
 slotmap = "1.0.7"
 static-rc = { version = "0.6.1", features = ["compile-time-ratio"] }
-sectorize= {path = "../sectorize"}
 
 
 [[bench]]

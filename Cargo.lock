@@ -288,12 +288,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b18d6f9df68f06a850512c84b7ba30ac925813880a14384b7fd29b5d69d8297f"
 
 [[package]]
-name = "fast_collections"
-version = "0.61.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d50a2163078dbfd21d24ecb06a6b009cb6fcb76b01560bb44dce8ec772d8b72f"
-
-[[package]]
 name = "fast_delegate"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -491,12 +485,6 @@ dependencies = [
  "wasi",
  "windows-sys",
 ]
-
-[[package]]
-name = "nonmax"
-version = "0.5.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "610a5acd306ec67f907abe5567859a3c693fb9886eb1f012ab8f2a47bef3db51"
 
 [[package]]
 name = "nu-ansi-term"
@@ -765,15 +753,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e1cf6437eb19a8f4a6cc0f7dca544973b0b78843adbfeb3683d1a94a0024a294"
 
 [[package]]
-name = "sectorize"
-version = "0.1.0"
-dependencies = [
- "derive_more",
- "fast_collections 0.61.0",
- "nonmax",
-]
-
-[[package]]
 name = "semver"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -853,7 +832,7 @@ dependencies = [
  "criterion",
  "data-encoding",
  "derive_more",
- "fast_collections 0.59.0",
+ "fast_collections",
  "fast_delegate",
  "ghost-cell",
  "httparse",
@@ -862,7 +841,6 @@ dependencies = [
  "polling",
  "qcell",
  "rand",
- "sectorize",
  "sha1",
  "slotmap",
  "static-rc",

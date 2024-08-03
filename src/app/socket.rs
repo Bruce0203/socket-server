@@ -1,25 +1,26 @@
 use std::time::Duration;
 
 use qcell::{LCell, LCellOwner};
-use sectorize::{EntityId, SectorId};
 
 use crate::{
-    socket_server::{Socket, SocketListener},
+    net::socket::{ServerSocketListener, Socket},
     websocket::{websocket_flush, websocket_read, ReadError, WebSocketState},
 };
 
-use super::container::{deinit_connection, init_connection, Container, Player};
+use super::app::{App, Player};
 
 #[derive(Default)]
 pub struct Connection<'id> {
-    pub player_id: Option<EntityId>,
+    pub game_id: Option<usize>,
+    pub player_id: Option<usize>,
     pub websocket: LCell<'id, WebSocketState>,
 }
 
-impl<'id, 'game, 'player> SocketListener<'id> for Container {
+impl<'id> ServerSocketListener<'id> for App {
     const MAX_CONNECTIONS: usize = 5000;
     const READ_BUFFFER_LEN: usize = 100;
     const WRITE_BUFFER_LEN: usize = 100;
+
     const TICK: Duration = Duration::from_millis(50);
     type Connection = Connection<'id>;
 
@@ -42,13 +43,8 @@ impl<'id, 'game, 'player> SocketListener<'id> for Container {
             &connection.write_buf,
         ) {
             Ok(_) => {
-                let entity_id = connection.connection.player_id.as_ref().unwrap();
-                println!("HI");
-                self.world
-                    .move_entity_to_another_sector(entity_id, &0.into())
-                    .unwrap();
-                //let player = self.get_player(connection.player_index.unwrap());
-                //let game = self.get_game(0); self.player_join_game(owner, game, player);
+                let entity_id =
+                    unsafe { connection.connection.player_id.as_ref().unwrap_unchecked() };
             }
             Err(err) => match err {
                 ReadError::NotFullRead => {}
@@ -67,5 +63,23 @@ impl<'id, 'game, 'player> SocketListener<'id> for Container {
 
     fn close(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>) {
         deinit_connection(self, connection);
+    }
+}
+
+fn init_connection(app: &mut App, connection: &mut Connection) -> Result<(), ()> {
+    let game = unsafe { app.games.get_unchecked_mut(App::LOBBY_ID) };
+    let player = Player {};
+    let index = game.players.len();
+    game.players.push(player).map_err(|_| ())?;
+    connection.player_id = Some(index);
+    connection.game_id = Some(App::LOBBY_ID);
+    Ok(())
+}
+
+fn deinit_connection(app: &mut App, connection: &mut Connection) {
+    unsafe {
+        let game = app.games.get_unchecked_mut(connection.game_id.unwrap());
+        let player_id = connection.player_id.unwrap();
+        game.players.swap_remove_unchecked(player_id);
     }
 }
