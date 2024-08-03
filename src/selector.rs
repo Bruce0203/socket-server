@@ -1,6 +1,6 @@
 use std::{
     mem::{transmute_copy, MaybeUninit},
-    net::SocketAddr,
+    net::{SocketAddr, ToSocketAddrs},
     time::Duration,
 };
 
@@ -162,7 +162,7 @@ where
     }
 }
 
-pub fn listen<'id, T>(owner: &mut LCellOwner<'id>, server: T, addr: SocketAddr) -> !
+pub fn listen<'id, T>(owner: &mut LCellOwner<'id>, server: T, addr: impl ToSocketAddrs) -> !
 where
     T: ServerSocketListener<'id, Connection: Default>,
     [(); T::READ_BUFFFER_LEN]:,
@@ -172,6 +172,7 @@ where
     let registry = owner.cell(Registry { vec: Vec::uninit() });
     let mut selector = ServerSelector::new(server);
     const LISTENER_TOKEN: Token = Token(usize::MAX);
+    let addr = addr.to_socket_addrs().unwrap().next().unwrap();
     let mut listener = {
         let mut listener = TcpListener::bind(addr).unwrap();
         selector
