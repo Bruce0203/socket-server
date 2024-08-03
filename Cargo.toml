@@ -2,24 +2,31 @@
 name = "socket_server"
 version = "0.1.0"
 edition = "2021"
+author = "Bruce0203 <brucefreedy@gmail.com>"
+description = "socket write event polling registration avoiding syscall"
+repository = "https://github.com/Bruce0203/fast_collections"
+license = "MIT"
+include = [
+    "**/*.rs",
+    "Cargo.toml",
+]
 
 [dependencies]
-criterion = "0.5.1"
-data-encoding = "2.6.0"
 derive_more = "0.99.18"
 fast_collections = "0.59.0"
-fast_delegate = "0.13.0"
-ghost-cell = "0.2.6"
-httparse = "1.9.4"
-loop-code = "0.5.2"
 mio = { version = "1.0.1", features = ["net", "os-poll"] }
-polling = "3.7.2"
 qcell = "0.5.4"
-rand = "0.8.5"
-sha1 = "0.10.6"
-slotmap = "1.0.7"
-static-rc = { version = "0.6.1", features = ["compile-time-ratio"] }
+httparse = { version = "1.9.4", optional = true }
+sha1 = { version = "0.10.6", optional = true }
+data-encoding = { version = "2.6.0", optional = true }
 
+[features]
+default = ["websocket"]
+websocket = ["dep:sha1", "dep:httparse", "dep:data-encoding"]
+
+[dev-dependencies]
+rand = "0.8.5"
+criterion = "0.5.1"
 
 [[bench]]
 name = "benchmark"
