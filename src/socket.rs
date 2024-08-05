@@ -1,7 +1,7 @@
 use derive_more::{Deref, DerefMut};
 use fast_collections::{Cursor, Vec};
 use qcell::{LCell, LCellOwner};
-use std::{net::SocketAddr, time::Duration};
+use std::net::SocketAddr;
 
 #[derive(Deref, DerefMut)]
 pub struct Socket<'id: 'registry, 'registry, T: ServerSocketListener<'id>>
@@ -20,12 +20,42 @@ where
     pub(crate) registry: &'registry LCell<'id, Registry<'id, T>>,
 }
 
+impl<'id: 'registry, 'registry, T> Socket<'id, 'registry, T>
+where
+    T: ServerSocketListener<'id, Connection: Default>,
+    [(); T::READ_BUFFFER_LEN]:,
+    [(); T::WRITE_BUFFER_LEN]:,
+    [(); T::MAX_CONNECTIONS]:,
+{
+    pub fn new(registry: &'registry LCell<'id, Registry<'id, T>>, token: usize) -> Self {
+        Self {
+            read_buf: Default::default(),
+            write_buf: Default::default(),
+            connection: Default::default(),
+            state: SocketState::default(),
+            token,
+            registry,
+        }
+    }
+}
+
 #[derive(Deref, DerefMut)]
-pub(crate) struct Registry<'id, T: ServerSocketListener<'id>>
+pub struct Registry<'id, T: ServerSocketListener<'id>>
 where
     [(); T::MAX_CONNECTIONS]:,
 {
     pub(crate) vec: Vec<usize, { T::MAX_CONNECTIONS }>,
+}
+
+impl<'id, T: ServerSocketListener<'id>> Registry<'id, T>
+where
+    [(); T::MAX_CONNECTIONS]:,
+{
+    pub fn new() -> Self {
+        Self {
+            vec: Default::default(),
+        }
+    }
 }
 
 #[derive(Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -64,7 +94,6 @@ pub trait ServerSocketListener<'id>: Sized {
     const MAX_CONNECTIONS: usize;
     const READ_BUFFFER_LEN: usize;
     const WRITE_BUFFER_LEN: usize;
-    const TICK: Duration;
     type Connection;
 
     fn tick(server: &LCell<'id, Self>, owner: &mut LCellOwner<'id>);

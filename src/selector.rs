@@ -1,122 +1,75 @@
 use std::{
+    io::{Read, Write},
     mem::{transmute_copy, MaybeUninit},
-    net::ToSocketAddrs,
-    time::Duration,
+    net::SocketAddr,
 };
 
-use fast_collections::{Cursor, Slab, Vec};
-use mio::{
-    net::{TcpListener, TcpStream},
-    Events, Interest, Poll, Token,
-};
+use fast_collections::Slab;
 use qcell::{LCell, LCellOwner};
-
-use crate::tick_machine::TickMachine;
 
 use super::socket::{Registry, ServerSocketListener, Socket, SocketState};
 
-pub struct ServerSelector<'id, 'registry, T: ServerSocketListener<'id>>
+pub(crate) trait Poll<T> {
+    fn open(&mut self, stream: &mut T, token: usize) -> Result<(), ()>;
+    fn close(&mut self, stream: &mut T);
+}
+
+pub(crate) struct Selector<'id, 'registry, T, P, Stream>
 where
+    T: ServerSocketListener<'id>,
     [(); T::READ_BUFFFER_LEN]:,
     [(); T::WRITE_BUFFER_LEN]:,
     [(); T::MAX_CONNECTIONS]:,
 {
-    server: LCell<'id, T>,
-    selector: Selector<'id, 'registry, T>,
-    poll: Poll,
-    mio_registry: mio::Registry,
+    pub poll: P,
+    pub server: LCell<'id, T>,
+    pub sockets: Slab<Socket<'id, 'registry, T>, { T::MAX_CONNECTIONS }>,
+    pub streams: [MaybeUninit<Stream>; T::MAX_CONNECTIONS],
 }
 
-pub struct Selector<'id, 'registry, T: ServerSocketListener<'id>>
-where
-    [(); T::READ_BUFFFER_LEN]:,
-    [(); T::WRITE_BUFFER_LEN]:,
-    [(); T::MAX_CONNECTIONS]:,
-{
-    sockets: Slab<Socket<'id, 'registry, T>, { T::MAX_CONNECTIONS }>,
-    streams: [MaybeUninit<TcpStream>; T::MAX_CONNECTIONS],
-}
-
-impl<'id, 'registry, T> Selector<'id, 'registry, T>
+impl<'id, 'registry, T, P, Stream> Selector<'id, 'registry, T, P, Stream>
 where
     T: ServerSocketListener<'id, Connection: Default>,
     [(); T::READ_BUFFFER_LEN]:,
     [(); T::WRITE_BUFFER_LEN]:,
     [(); T::MAX_CONNECTIONS]:,
 {
-    pub fn new() -> Self {
-        let streams = MaybeUninit::<[MaybeUninit<TcpStream>; T::MAX_CONNECTIONS]>::uninit();
+    pub fn new(server: T, owner: &mut LCellOwner<'id>, poll: P) -> Self {
+        let streams = MaybeUninit::<[MaybeUninit<Stream>; T::MAX_CONNECTIONS]>::uninit();
         let streams = unsafe { transmute_copy(&streams.assume_init()) };
         Self {
+            server: owner.cell(server),
             sockets: Slab::new(),
             streams,
+            poll,
         }
     }
 }
 
-impl<'id, 'registry, T> ServerSelector<'id, 'registry, T>
+impl<'id, 'registry, T, P: Poll<Stream>, Stream: Read + Write>
+    Selector<'id, 'registry, T, P, Stream>
 where
     T: ServerSocketListener<'id, Connection: Default>,
     [(); T::READ_BUFFFER_LEN]:,
     [(); T::WRITE_BUFFER_LEN]:,
     [(); T::MAX_CONNECTIONS]:,
 {
-    fn new(server: T, owner: &mut LCellOwner<'id>) -> Self {
-        let poll = Poll::new().unwrap();
-        let mio_registry = poll.registry().try_clone().unwrap();
-        Self {
-            poll,
-            mio_registry,
-            selector: Selector::new(),
-            server: owner.cell(server),
-        }
-    }
-
-    fn accept(
-        &mut self,
-        owner: &mut LCellOwner<'id>,
-        listener: &mut TcpListener,
-        registry: &'registry LCell<'id, Registry<'id, T>>,
-    ) -> Result<(), ()> {
-        let (accepted_stream, addr) = listener.accept().map_err(|_| ())?;
-        let id = self.selector.sockets.add_with_index(|ind| Socket {
-            connection: Default::default(),
-            state: SocketState::default(),
-            read_buf: owner.cell(Cursor::new()),
-            write_buf: owner.cell(Cursor::new()),
-            token: *ind,
-            registry,
-        })?;
-        let stream = unsafe { self.selector.streams.get_unchecked_mut(id) };
-        let socket = unsafe { self.selector.sockets.get_unchecked_mut(id) };
-        *stream = MaybeUninit::new(accepted_stream);
-        match mio::Registry::register(
-            &self.mio_registry,
-            unsafe { stream.assume_init_mut() },
-            Token(socket.token),
-            Interest::READABLE,
-        ) {
-            Ok(()) => T::accept(owner, &self.server, socket, addr),
-            Err(_err) => socket.register_close_event(owner),
-        }
-        Ok(())
-    }
-
-    fn read(&mut self, owner: &mut LCellOwner<'id>, token: usize) {
-        let socket = unsafe { self.selector.sockets.get_unchecked_mut(token) };
-        let stream = unsafe {
-            self.selector
-                .streams
-                .get_unchecked_mut(token)
-                .assume_init_mut()
-        };
+    pub fn read(&mut self, owner: &mut LCellOwner<'id>, token: usize) {
+        let socket = unsafe { self.sockets.get_unchecked_mut(token) };
+        let stream = unsafe { self.streams.get_unchecked_mut(token).assume_init_mut() };
         match socket.read_buf.rw(owner).push_from_read(stream) {
-            Ok(()) => T::read(owner, &self.server, socket),
-            Err(_) => socket.register_close_event(owner),
+            Ok(read_len) => {
+                if read_len == 0 {
+                    socket.register_close_event(owner)
+                } else {
+                    T::read(owner, &self.server, socket)
+                }
+            }
+            Err(_io_err) => socket.register_close_event(owner),
         }
     }
 
-    fn flush_registry(
+    pub fn flush_registry(
         &mut self,
         owner: &mut LCellOwner<'id>,
         registry: &'registry LCell<'id, Registry<'id, T>>,
@@ -124,20 +77,19 @@ where
         let registry_vec_len = registry.ro(owner).len();
         for ind in 0..registry_vec_len {
             let id = *unsafe { registry.ro(&owner).get_unchecked(ind) };
-            let socket = unsafe { self.selector.sockets.get_unchecked_mut(id) };
-            let stream = unsafe {
-                self.selector
-                    .streams
-                    .get_unchecked_mut(id)
-                    .assume_init_mut()
-            };
+            let socket = unsafe { self.sockets.get_unchecked_mut(id) };
+            let stream = unsafe { self.streams.get_unchecked_mut(id).assume_init_mut() };
             match socket.state {
                 SocketState::Idle => continue,
                 SocketState::WriteRequest => {
                     socket.state = SocketState::Idle;
                     T::flush(owner, &self.server, socket);
                     match socket.write_buf.rw(owner).push_to_write(stream) {
-                        Ok(()) => {}
+                        Ok(write_len) => {
+                            if write_len == 0 {
+                                self.close(owner, id)
+                            }
+                        }
                         Err(_) => self.close(owner, id),
                     };
                 }
@@ -147,56 +99,35 @@ where
         registry.rw(owner).clear();
     }
 
-    fn close(&mut self, owner: &mut LCellOwner<'id>, id: usize) {
-        let socket = unsafe { self.selector.sockets.get_unchecked_mut(id) };
-        let stream = unsafe {
-            self.selector
-                .streams
-                .get_unchecked_mut(id)
-                .assume_init_mut()
-        };
-        T::close(owner, &self.server, socket);
-        self.mio_registry.deregister(stream).unwrap();
-        let token = socket.token;
-        unsafe { self.selector.sockets.remove_unchecked(token) };
-    }
-}
-
-pub fn listen<'id, T>(owner: &mut LCellOwner<'id>, server: T, addr: impl ToSocketAddrs) -> !
-where
-    T: ServerSocketListener<'id, Connection: Default>,
-    [(); T::READ_BUFFFER_LEN]:,
-    [(); T::WRITE_BUFFER_LEN]:,
-    [(); T::MAX_CONNECTIONS]:,
-{
-    let registry = owner.cell(Registry { vec: Vec::uninit() });
-    let mut selector = ServerSelector::new(server, owner);
-    const LISTENER_TOKEN: Token = Token(usize::MAX);
-    let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-    let mut listener = {
-        let mut listener = TcpListener::bind(addr).unwrap();
-        selector
-            .mio_registry
-            .register(&mut listener, LISTENER_TOKEN, Interest::READABLE)
-            .unwrap();
-        listener
-    };
-    let mut events = Events::with_capacity(T::MAX_CONNECTIONS);
-    let mut tick_machine = TickMachine::new(T::TICK);
-    loop {
-        selector
+    pub fn accept(
+        &mut self,
+        owner: &mut LCellOwner<'id>,
+        accepted_stream: Stream,
+        addr: SocketAddr,
+        registry: &'registry LCell<'id, Registry<'id, T>>,
+    ) -> Result<(), ()> {
+        let id = self
+            .sockets
+            .add_with_index(|ind| Socket::new(registry, *ind))?;
+        let stream = unsafe { self.streams.get_unchecked_mut(id) };
+        let socket = unsafe { self.sockets.get_unchecked_mut(id) };
+        *stream = MaybeUninit::new(accepted_stream);
+        match self
             .poll
-            .poll(&mut events, Some(Duration::ZERO))
-            .unwrap();
-        tick_machine.tick(|| T::tick(&selector.server, owner));
-        selector.flush_registry(owner, &registry);
-        for event in events.iter() {
-            let token = event.token();
-            if token == LISTENER_TOKEN {
-                let _result = selector.accept(owner, &mut listener, &registry);
-            } else {
-                selector.read(owner, token.0)
-            }
+            .open(unsafe { stream.assume_init_mut() }, socket.token)
+        {
+            Ok(()) => T::accept(owner, &self.server, socket, addr),
+            Err(_err) => socket.register_close_event(owner),
         }
+        Ok(())
+    }
+
+    pub fn close(&mut self, owner: &mut LCellOwner<'id>, id: usize) {
+        let socket = unsafe { self.sockets.get_unchecked_mut(id) };
+        let stream = unsafe { self.streams.get_unchecked_mut(id).assume_init_mut() };
+        T::close(owner, &self.server, socket);
+        self.poll.close(stream);
+        let token = socket.token;
+        unsafe { self.sockets.remove_unchecked(token) };
     }
 }
