@@ -10,11 +10,11 @@ where
     [(); T::WRITE_BUFFER_LEN]:,
     [(); T::MAX_CONNECTIONS]:,
 {
-    #[deref]
-    #[deref_mut]
-    connection: T::Connection,
     pub read_buf: LCell<'id, Cursor<u8, { T::READ_BUFFFER_LEN }>>,
     pub write_buf: LCell<'id, Cursor<u8, { T::WRITE_BUFFER_LEN }>>,
+    #[deref]
+    #[deref_mut]
+    pub(crate) connection: T::Connection,
     pub(crate) state: SocketState,
     pub(crate) token: usize,
     pub(crate) registry: &'registry LCell<'id, Registry<'id, T>>,
