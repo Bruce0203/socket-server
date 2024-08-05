@@ -258,9 +258,9 @@ dependencies = [
 
 [[package]]
 name = "fast_collections"
-version = "0.59.0"
+version = "0.64.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b18d6f9df68f06a850512c84b7ba30ac925813880a14384b7fd29b5d69d8297f"
+checksum = "1ec71380023eaa7d255ea09b6c68a85866ab8f23c0d3540cefd5de7a50205c2c"
 
 [[package]]
 name = "generator"
@@ -716,7 +716,7 @@ checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
 
 [[package]]
 name = "socket_server"
-version = "0.6.0"
+version = "0.8.0"
 dependencies = [
  "criterion",
  "data-encoding",

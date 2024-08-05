@@ -78,7 +78,7 @@ where
         listener: &mut TcpListener,
         registry: &'registry LCell<'id, Registry<'id, T>>,
     ) -> Result<(), ()> {
-        let (accepted_stream, _addr) = listener.accept().map_err(|_| ())?;
+        let (accepted_stream, addr) = listener.accept().map_err(|_| ())?;
         let id = self.selector.sockets.add_with_index(|ind| Socket {
             connection: Default::default(),
             state: SocketState::default(),
@@ -96,7 +96,7 @@ where
             Token(socket.token),
             Interest::READABLE,
         ) {
-            Ok(()) => T::accept(owner, &self.server, socket),
+            Ok(()) => T::accept(owner, &self.server, socket, addr),
             Err(_err) => socket.register_close_event(owner),
         }
         Ok(())

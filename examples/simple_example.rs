@@ -1,7 +1,7 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
-use std::time::Duration;
+use std::{net::SocketAddr, time::Duration};
 
 use fast_collections::Vec;
 use qcell::{LCell, LCellOwner};
@@ -63,6 +63,7 @@ impl<'id: 'game, 'game> ServerSocketListener<'id> for GameServer<'id, 'game> {
         owner: &mut LCellOwner<'id>,
         server: &LCell<'id, Self>,
         connection: &mut Socket<'id, '_, Self>,
+        _addr: SocketAddr,
     ) {
         let game = unsafe { server.ro(owner).games.get_unchecked(0) };
         connection.player_s_game_room_index = 0;

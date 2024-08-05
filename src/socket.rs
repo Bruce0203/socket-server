@@ -1,7 +1,7 @@
 use derive_more::{Deref, DerefMut};
 use fast_collections::{Cursor, Vec};
 use qcell::{LCell, LCellOwner};
-use std::time::Duration;
+use std::{net::SocketAddr, time::Duration};
 
 #[derive(Deref, DerefMut)]
 pub struct Socket<'id: 'registry, 'registry, T: ServerSocketListener<'id>>
@@ -73,6 +73,7 @@ pub trait ServerSocketListener<'id>: Sized {
         owner: &mut LCellOwner<'id>,
         server: &LCell<'id, Self>,
         connection: &mut Socket<'id, '_, Self>,
+        addr: SocketAddr,
     ) where
         [(); Self::READ_BUFFFER_LEN]:,
         [(); Self::WRITE_BUFFER_LEN]:,
