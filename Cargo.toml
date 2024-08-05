@@ -13,7 +13,7 @@ include = [
 
 [dependencies]
 derive_more = "0.99.18"
-fast_collections = "0.63.0"
+fast_collections = "0.64.0"
 mio = { version = "1.0.1", features = ["net", "os-poll"] }
 qcell = "0.5.4"
 httparse = { version = "1.9.4", optional = true }
