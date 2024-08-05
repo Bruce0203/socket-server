@@ -12,7 +12,7 @@ where
 {
     #[deref]
     #[deref_mut]
-    pub connection: T::Connection,
+    connection: T::Connection,
     pub read_buf: LCell<'id, Cursor<u8, { T::READ_BUFFFER_LEN }>>,
     pub write_buf: LCell<'id, Cursor<u8, { T::WRITE_BUFFER_LEN }>>,
     pub(crate) state: SocketState,
@@ -67,28 +67,40 @@ pub trait ServerSocketListener<'id>: Sized {
     const TICK: Duration;
     type Connection;
 
-    fn tick(&mut self, owner: &mut LCellOwner<'id>);
+    fn tick(server: &LCell<'id, Self>, owner: &mut LCellOwner<'id>);
 
-    fn accept(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>)
-    where
+    fn accept(
+        owner: &mut LCellOwner<'id>,
+        server: &LCell<'id, Self>,
+        connection: &mut Socket<'id, '_, Self>,
+    ) where
         [(); Self::READ_BUFFFER_LEN]:,
         [(); Self::WRITE_BUFFER_LEN]:,
         [(); Self::MAX_CONNECTIONS]:;
 
-    fn read(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>)
-    where
+    fn read(
+        owner: &mut LCellOwner<'id>,
+        server: &LCell<'id, Self>,
+        connection: &mut Socket<'id, '_, Self>,
+    ) where
         [(); Self::READ_BUFFFER_LEN]:,
         [(); Self::WRITE_BUFFER_LEN]:,
         [(); Self::MAX_CONNECTIONS]:;
 
-    fn flush(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>)
-    where
+    fn flush(
+        owner: &mut LCellOwner<'id>,
+        server: &LCell<'id, Self>,
+        connection: &mut Socket<'id, '_, Self>,
+    ) where
         [(); Self::READ_BUFFFER_LEN]:,
         [(); Self::WRITE_BUFFER_LEN]:,
         [(); Self::MAX_CONNECTIONS]:;
 
-    fn close(&mut self, owner: &mut LCellOwner<'id>, connection: &mut Socket<'id, '_, Self>)
-    where
+    fn close(
+        owner: &mut LCellOwner<'id>,
+        server: &LCell<'id, Self>,
+        connection: &mut Socket<'id, '_, Self>,
+    ) where
         [(); Self::READ_BUFFFER_LEN]:,
         [(); Self::WRITE_BUFFER_LEN]:,
         [(); Self::MAX_CONNECTIONS]:;
