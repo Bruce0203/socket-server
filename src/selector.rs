@@ -189,6 +189,7 @@ where
             .poll(&mut events, Some(Duration::ZERO))
             .unwrap();
         tick_machine.tick(|| T::tick(&selector.server, owner));
+        selector.flush_registry(owner, &registry);
         for event in events.iter() {
             let token = event.token();
             if token == LISTENER_TOKEN {
@@ -197,6 +198,5 @@ where
                 selector.read(owner, token.0)
             }
         }
-        selector.flush_registry(owner, &registry)
     }
 }
